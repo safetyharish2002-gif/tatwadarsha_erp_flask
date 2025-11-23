@@ -110,14 +110,16 @@ try:
     from app.routers.students import students_bp
     from app.routers.roll_number_allocation import roll_bp
     from app.routers.dashboard import dashboard_bp
+    from app.routers.fees import fees_bp   # ✅ ADD THIS LINE
 
     # Register blueprints only if imports succeed
     app.register_blueprint(master_bp)
     app.register_blueprint(students_bp)
     app.register_blueprint(roll_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(fees_bp, url_prefix="/fees")   # ✅ ADD THIS LINE
+
 except Exception as e:
-    # Import errors can happen if files have syntax problems — print for debugging
     print("⚠️ Warning: Blueprint import/register failed:", e)
 
 
