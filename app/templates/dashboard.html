@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | Tatwadarsha ERP{% endblock %}
+
+{% block content %}
+
+<style>
+/* ------------------ PREMIUM CARD ANIMATION ------------------ */
+
+.stat-card {
+    background: rgba(255, 255, 255, 0.70);
+    backdrop-filter: blur(15px);
+    border-radius: 18px;
+    padding: 28px 20px;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.3);
+    box-shadow: 0 0 40px rgba(0,0,0,0.08);
+    cursor: pointer;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.3s;
+}
+
+.stat-card:hover {
+    transform: translateY(-10px) scale(1.03);
+    background: rgba(255, 255, 255, 0.90);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.20);
+}
+
+.stat-card:active {
+    transform: scale(0.96);
+}
+
+/* MODULE CARD ANIMATION */
+.module-card {
+    border-radius: 16px;
+    background: #fff;
+    border: 1px solid rgba(0,0,0,0.05);
+    transition: 0.3s ease;
+    cursor: pointer;
+}
+
+.module-card:hover {
+    transform: translateY(-10px);
+    box-shadow: 0 18px 40px rgba(0,0,0,0.15);
+}
+
+.module-card:active {
+    transform: scale(0.97);
+}
+</style>
+
+<div class="container py-4">
+
+  <!-- STAT CARDS -->
+  <div class="row g-4 mb-4">
+
+    <div class="col-md-3">
+      <div class="stat-card" onclick="window.location='/students/view'">
+        <h6 class="text-muted mb-1">Total Students</h6>
+        <h2 class="fw-bold text-primary">{{ total_students }}</h2>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <div class="stat-card" onclick="window.location='/dropout_students'">
+        <h6 class="text-muted mb-1">Dropout Students</h6>
+        <h2 class="fw-bold text-danger">{{ dropout_students }}</h2>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <div class="stat-card" onclick="window.location='/students/view?course=BSC%20NURSING'">
+        <h6 class="text-muted mb-1">B.Sc Nursing</h6>
+        <h2 class="fw-bold text-success">{{ bsc_students }}</h2>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <div class="stat-card" onclick="window.location='/students/view?course=MSC%20NURSING'">
+        <h6 class="text-muted mb-1">M.Sc Nursing</h6>
+        <h2 class="fw-bold text-info">{{ msc_students }}</h2>
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- MODULE CARDS -->
+  <div class="row g-4 mt-4">
+
+    <div class="col-md-4">
+      <div class="card module-card p-3" onclick="window.location='/students/view'">
+        <h5>🎓 Students</h5>
+        <p class="text-muted mb-3">Manage student data, promotions, dropouts, and reports.</p>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <div class="card module-card p-3" onclick="window.location='/employees'">
+        <h5>👩‍🏫 Employees</h5>
+        <p class="text-muted mb-3">View, edit and assign staff details.</p>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <div class="card module-card p-3" onclick="window.location='/fees'">
+        <h5>💰 Fees</h5>
+        <p class="text-muted mb-3">Track payments and collection reports.</p>
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- CHART -->
+  <div class="card shadow-sm border-0 mt-4">
+    <div class="card-body">
+      <h5 class="card-title mb-3">📊 Students by Batch</h5>
+      <canvas id="studentsChart" height="120"></canvas>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- CHART JS -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  const labels = {{ chart_labels | tojson | safe }};
+  const values = {{ chart_values | tojson | safe }};
+
+  const ctx = document.getElementById('studentsChart').getContext('2d');
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Students',
+        data: values,
+        backgroundColor: 'rgba(54, 162, 235, 0.5)',
+        borderColor: 'rgba(54, 162, 235, 1)',
+        borderWidth: 1
+      }]
+    }
+  });
+
+});
+</script>
+
+{% endblock %}

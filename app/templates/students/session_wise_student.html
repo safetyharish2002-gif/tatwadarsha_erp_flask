@@ -1,0 +1,629 @@
+{% extends "base.html" %}
+
+{% block title %}Session-wise Students | Tatwadarsha ERP{% endblock %}
+
+{% block content %}
+<style>
+  /* Glassy card */
+  .glass-card{
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+    color: var(--bs-body-color);
+  }
+  .controls-row .form-control, .controls-row .form-select{min-height:44px}
+  .table-wrap{ overflow:auto; }
+  .export-header h5{margin:0;color:#198754;font-weight:700}
+  .export-header h4{margin:2px 0 0 0;color:#a52a2a;text-transform:uppercase;font-weight:700}
+
+  /* DataTable scroll styling & presentation */
+  div.dataTables_wrapper { width: 100%; margin: 0; }
+  table.dataTable { table-layout: auto !important; }
+  table.dataTable td, table.dataTable th { white-space: nowrap; } /* keep each column in single line so horizontal scroll appears */
+  thead th { font-weight: 700; font-size: 12px; vertical-align: middle; }
+  .dt-buttons .btn{margin-right:6px}
+  /* ensure the view buttons look good */
+  .doc-btn { padding: 3px 8px; font-size: 12px; }
+</style>
+
+<div class="container-fluid py-4">
+  <div class="row">
+    <div class="col-12">
+      <h4 class="fw-bold mb-3">Session-wise Students (All Details)</h4>
+
+      <div class="glass-card mb-3">
+        <div class="row g-2 align-items-center controls-row">
+          <!-- Session -->
+          <div class="col-md-3">
+            <label class="form-label small mb-1">Session</label>
+            <select id="filterSession" class="form-select">
+              <option value="">All Sessions</option>
+            </select>
+          </div>
+
+          <!-- Course -->
+          <div class="col-md-3">
+            <label class="form-label small mb-1">Course</label>
+            <select id="filterCourse" class="form-select">
+              <option value="">All Courses</option>
+            </select>
+          </div>
+
+          <!-- Branch -->
+          <div class="col-md-2">
+            <label class="form-label small mb-1">Branch</label>
+            <select id="filterBranch" class="form-select">
+              <option value="">All Branches</option>
+            </select>
+          </div>
+
+          <!-- Department -->
+          <div class="col-md-2">
+            <label class="form-label small mb-1">Department</label>
+            <select id="filterDepartment" class="form-select">
+              <option value="">All Departments</option>
+            </select>
+          </div>
+
+          <!-- Batch -->
+          <div class="col-md-2">
+            <label class="form-label small mb-1">Batch</label>
+            <select id="filterBatch" class="form-select">
+              <option value="">All Batches</option>
+            </select>
+          </div>
+
+          <!-- Search -->
+          <div class="col-md-4 mt-2">
+            <label class="form-label small mb-1">Search</label>
+            <input id="globalSearch" class="form-control" placeholder="Search by any visible field...">
+          </div>
+
+          <div class="col-12 mt-3 d-flex justify-content-between align-items-center">
+            <div>
+              <button id="btnRefresh" class="btn btn-sm btn-outline-light">Refresh</button>
+              <button id="btnClear" class="btn btn-sm btn-outline-light">Clear Filters</button>
+            </div>
+            <div>
+              <button id="btnExportCsv" class="btn btn-sm btn-secondary me-1">Export CSV</button>
+              <button id="btnExportExcel" class="btn btn-sm btn-secondary me-1">Export Excel</button>
+              <button id="btnExportPdf" class="btn btn-sm btn-secondary me-1">Export PDF</button>
+              <button id="btnPrint" class="btn btn-sm btn-outline-light">Print</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card table-wrap">
+        <table id="studentsTable" class="table table-striped table-hover nowrap" style="width:100%">
+          <thead>
+            <tr>
+              <th>Sl. No.</th>
+
+              <!-- PERSONAL (raw order) -->
+              <th>Name</th>
+              <th>Date of Birth</th>
+              <th>Gender</th>
+              <th>Religion</th>
+              <th>Caste</th>
+              <th>Aadhaar Number</th>
+              <th>Blood Group</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>Address</th>
+
+              <!-- ACADEMIC -->
+              <th>Session</th>
+              <th>Course</th>
+              <th>Branch</th>
+              <th>Department</th>
+              <th>Batch</th>
+              <th>Register Number</th>
+              <th>Admission Date</th>
+              <th>Previous School</th>
+              <th>10th Board</th>
+              <th>10th %</th>
+              <th>12th Board</th>
+              <th>12th %</th>
+              <th>Last Exam Passed</th>
+
+              <!-- FAMILY -->
+              <th>Father Name</th>
+              <th>Father Occupation</th>
+              <th>Father Mobile</th>
+              <th>Mother Name</th>
+              <th>Mother Mobile</th>
+              <th>Guardian Name</th>
+              <th>Guardian Mobile</th>
+              <th>Guardian Email</th>
+              <th>Annual Income</th>
+
+              <!-- BANK -->
+              <th>Account Holder</th>
+              <th>Account Number</th>
+              <th>Bank Name</th>
+              <th>IFSC</th>
+
+              <!-- DOCUMENTS (will show View buttons) -->
+              <th>Photo</th>
+              <th>Marksheet</th>
+              <th>Aadhaar</th>
+              <th>TC</th>
+              <th>Migration</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Dependencies -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
+
+<!-- jQuery -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- DataTables -->
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
+
+<!-- PDF & Canvas & Excel libs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+
+<script>
+/* ========= EXPORT HEADER (ERP) ========= */
+const ERP_TITLE_LINES = [
+  'GLOBAL EDUCATION ACADEMY (R)',
+  'TATWADARSHA INSTITUTE OF NURSING SCIENCES, HUBBALLI'
+];
+
+/* ========== Column keys in the exact same raw order ========== */
+const FULL_KEYS = [
+  // PERSONAL
+  'name','dob','gender','religion','caste','aadhaar','blood_group','email','phone','address',
+  // ACADEMIC
+  'session','course','branch','department','batch','register_number','admission_date','previous_school',
+  'tenth_board','tenth_percent','twelfth_board','twelfth_percent','last_exam_passed',
+  // FAMILY
+  'father_name','father_occupation','father_mobile','mother_name','mother_mobile','guardian_name','guardian_mobile','guardian_email','annual_income',
+  // BANK
+  'account_holder','account_number','bank_name','ifsc',
+  // DOCUMENTS (raw values kept here, display will be buttons)
+  'photo_url','marksheet_url','aadhaar_url','tc_url','migration_url'
+];
+
+/* Human-friendly headers that match FULL_KEYS order */
+const EXPORT_HEADERS = [
+  'Name','Date of Birth','Gender','Religion','Caste','Aadhaar Number','Blood Group','Email','Phone','Address',
+  'Session','Course','Branch','Department','Batch','Register Number','Admission Date','Previous School',
+  '10th Board','10th %','12th Board','12th %','Last Exam Passed',
+  'Father Name','Father Occupation','Father Mobile','Mother Name','Mother Mobile','Guardian Name','Guardian Mobile','Guardian Email','Annual Income',
+  'Account Holder','Account Number','Bank Name','IFSC',
+  'Photo URL','Marksheet URL','Aadhaar URL','TC URL','Migration URL'
+];
+
+let table;
+let fullFilteredData = []; // will store flattened objects including 'id' (hidden) and full raw urls
+
+/* ---------- Utility: get logo as dataURL (for PDF) ---------- */
+function getLogoDataURL() {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      // try to load same-origin image; set crossOrigin to anonymous for canvas if allowed by server
+      img.crossOrigin = 'anonymous';
+      img.src = "{{ url_for('static', filename='images/logo.png') }}?v=" + (new Date().getTime());
+      img.onload = function() {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const dataURL = canvas.toDataURL('image/png');
+          resolve(dataURL);
+        } catch (e) {
+          console.warn('logo to canvas failed', e);
+          resolve(null);
+        }
+      };
+      img.onerror = function() {
+        console.warn('logo load error');
+        resolve(null);
+      };
+    } catch (e) {
+      console.warn('getLogoDataURL error', e);
+      resolve(null);
+    }
+  });
+}
+
+/* ---------- Flatten student into keyed object matching FULL_KEYS (include id but not exported) ---------- */
+function flattenStudent(student) {
+  const out = {};
+  // keep id internally but do not include in FULL_KEYS or exports
+  out['id'] = student.id || student.uid || '';
+
+  const p = student.personal || {};
+  const a = student.academic || {};
+  const f = student.family || {};
+  const b = student.bank || {};
+  const d = student.documents || {};
+
+  // PERSONAL
+  out['name'] = p.name || student.name || '';
+  out['dob'] = p.dob || '';
+  out['gender'] = p.gender || '';
+  out['religion'] = p.religion || '';
+  out['caste'] = p.caste || '';
+  out['aadhaar'] = p.aadhaar || '';
+  out['blood_group'] = p.blood_group || '';
+  out['email'] = p.email || '';
+  out['phone'] = p.phone || '';
+  out['address'] = p.address || '';
+
+  // ACADEMIC
+  out['session'] = a.session || '';
+  out['course'] = a.course || '';
+  out['branch'] = a.branch || '';
+  out['department'] = a.department || '';
+  out['batch'] = a.batch || '';
+  out['register_number'] = a.register_number || a.register_no || a.register || '';
+  out['admission_date'] = a.admission_date || '';
+  out['previous_school'] = a.previous_school || '';
+  out['tenth_board'] = a.tenth_board || '';
+  out['tenth_percent'] = a.tenth_percent || '';
+  out['twelfth_board'] = a.twelfth_board || '';
+  out['twelfth_percent'] = a.twelfth_percent || '';
+  out['last_exam_passed'] = a.last_exam_passed || '';
+
+  // FAMILY
+  out['father_name'] = f.father_name || '';
+  out['father_occupation'] = f.father_occupation || '';
+  out['father_mobile'] = f.father_mobile || '';
+  out['mother_name'] = f.mother_name || '';
+  out['mother_mobile'] = f.mother_mobile || '';
+  out['guardian_name'] = f.guardian_name || '';
+  out['guardian_mobile'] = f.guardian_mobile || '';
+  out['guardian_email'] = f.guardian_email || '';
+  out['annual_income'] = f.annual_income || '';
+
+  // BANK
+  out['account_holder'] = b.account_holder || '';
+  out['account_number'] = b.account_number || '';
+  out['bank_name'] = b.bank_name || '';
+  out['ifsc'] = b.ifsc || '';
+
+  // DOCUMENTS (raw)
+  out['photo_url'] = d.photo_url || '';
+  out['marksheet_url'] = d.marksheet_url || '';
+  out['aadhaar_url'] = d.aadhaar_url || '';
+  out['tc_url'] = d.tc_url || '';
+  out['migration_url'] = d.migration_url || '';
+
+  return out;
+}
+
+/* ---------- Initialize UI ---------- */
+$(document).ready(function(){
+  initDataTable();
+  bindControls();
+  loadMastersFromServer();
+  fetchStudents();
+});
+
+/* ---------- DataTable init (full wide table) ---------- */
+function initDataTable(){
+  // build columns for DataTable: sl + each FULL_KEY
+  const columns = [{ data: 'sl', title: 'Sl. No.' }]
+    .concat(FULL_KEYS.map(k => ({ data: k, title: k })));
+
+  table = $('#studentsTable').DataTable({
+    columns: columns,
+    pageLength: 25,
+    responsive: true,
+    autoWidth: false,
+    scrollX: true,
+    scrollY: "620px",
+    scrollCollapse: true,
+    deferRender: true,
+    dom: 'Blfrtip',
+    buttons: [],
+    columnDefs: [
+      { targets: 0, orderable: false }, // static serial number - not sortable
+    ],
+    order: [], // no initial order so serial correspond to returned order
+    createdRow: function(row, data, dataIndex) {
+      // replace document URL cells with View buttons (data holds raw url)
+      const docKeys = ['photo_url','marksheet_url','aadhaar_url','tc_url','migration_url'];
+      docKeys.forEach((key) => {
+        const colIndex = 1 + FULL_KEYS.indexOf(key); // +1 because sl is first column
+        if (colIndex >= 0) {
+          const cell = $('td', row).eq(colIndex);
+          const url = data[key] || '';
+          if (url && url.trim() !== '') {
+            // safe anchor
+            const escaped = String(url).replace(/"/g, '&quot;');
+            cell.html(`<a href="${escaped}" target="_blank" rel="noopener" class="btn btn-sm btn-primary doc-btn">View</a>`);
+          } else {
+            cell.html(''); // empty if no url
+          }
+        }
+      });
+    }
+  });
+
+  // global search input
+  $('#globalSearch').on('input', function(){
+    table.search(this.value).draw();
+  });
+}
+
+/* ---------- Bind controls ---------- */
+function bindControls(){
+  $('#filterCourse, #filterBranch, #filterDepartment, #filterBatch, #filterSession').on('change', fetchStudents);
+  $('#btnRefresh').on('click', fetchStudents);
+  $('#btnClear').on('click', function(){
+    $('#filterCourse').val(''); $('#filterBranch').val(''); $('#filterDepartment').val(''); $('#filterBatch').val(''); $('#filterSession').val(''); $('#globalSearch').val(''); table.search('').draw(); fetchStudents();
+  });
+
+  $('#btnExportCsv').off().on('click', () => exportFullCSVFromTable('students_export.csv'));
+  $('#btnExportExcel').off().on('click', () => exportFullExcelFromTable('students_export.xlsx'));
+  $('#btnExportPdf').off().on('click', () => exportFullPDFFromTable());
+  $('#btnPrint').off().on('click', () => exportFullPrintFromTable());
+}
+
+/* ---------- Load masters from server (dynamic) ---------- */
+async function loadMastersFromServer(){
+  const masters = ['session','course','branch','department','batch'];
+  for (const m of masters){
+    try {
+      const res = await fetch(`/master/${m}/items`);
+      const payload = await res.json();
+      const list = (payload.items || []).map(i => i.name || i);
+      const selectId = {
+        session: '#filterSession',
+        course: '#filterCourse',
+        branch: '#filterBranch',
+        department: '#filterDepartment',
+        batch: '#filterBatch'
+      }[m];
+
+      const sel = $(selectId);
+      list.forEach(val => {
+        if (!val) return;
+        if (sel.find(`option[value="${val}"]`).length === 0) {
+          sel.append(`<option value="${val}">${val}</option>`);
+        }
+      });
+    } catch (e) {
+      console.warn('Failed to load master', m, e);
+    }
+  }
+}
+
+/* ========== FETCH STUDENTS (filtered) ========== */
+function fetchStudents(){
+  const params = {
+    session: $('#filterSession').val(),
+    course: $('#filterCourse').val(),
+    branch: $('#filterBranch').val(),
+    department: $('#filterDepartment').val(),
+    batch: $('#filterBatch').val()
+  };
+
+  // Show loading state
+  table.clear().draw();
+  const loadingRow = { sl: '', };
+  FULL_KEYS.forEach(k => loadingRow[k] = '');
+  loadingRow['name'] = 'Loading...';
+  table.row.add(loadingRow).draw();
+
+  const qs = new URLSearchParams(params).toString();
+  fetch(`/students/session-wise-data?${qs}`)
+    .then(r => r.json())
+    .then(payload => {
+      if (!Array.isArray(payload)) payload = [];
+
+      // Flatten for export and display (keep id internally)
+      fullFilteredData = payload.map(s => flattenStudent(s));
+
+      // prepare rows with sl + keys. SL is the original index (static).
+      table.clear();
+      fullFilteredData.forEach((flat, idx) => {
+        const row = { sl: idx + 1 };
+        FULL_KEYS.forEach(k => row[k] = flat[k] || '');
+        // attach id also in row for internal use if needed (not displayed/exported)
+        row['_internal_id'] = flat.id || '';
+        table.row.add(row);
+      });
+
+      table.draw(false); // draw without resetting paging
+    })
+    .catch(err => {
+      console.error('Fetch students error', err);
+      table.clear().draw();
+      $('#studentsTable tbody').html('<tr><td colspan="50">Error fetching students. Check console.</td></tr>');
+      fullFilteredData = [];
+    });
+}
+
+/* ========== EXPORT HELPERS that use current table order ========== */
+
+/* Utility: get table's current ordered data (applied order, all pages) */
+function getOrderedTableData() {
+  // rows({order:'applied', page:'all'}) returns DataTables API with ordered rows
+  const dtData = table.rows({ order: 'applied', page: 'all' }).data().toArray();
+  // dtData items are objects containing sl and FULL_KEYS fields
+  return dtData;
+}
+
+/* CSV from current table order */
+function exportFullCSVFromTable(filename = 'students_export.csv') {
+  const dtData = getOrderedTableData();
+  if (!dtData || dtData.length === 0) return alert('No data to export.');
+
+  // Header lines
+  let csv = `"${ERP_TITLE_LINES[0]}","${ERP_TITLE_LINES[1]}"\n`;
+  csv += EXPORT_HEADERS.join(",") + "\n";
+
+  dtData.forEach(row => {
+    const vals = FULL_KEYS.map(k => {
+      const v = row[k] || '';
+      // For document columns we keep raw URL (not the View button)
+      return JSON.stringify(String(v));
+    });
+    csv += vals.join(",") + "\n";
+  });
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+}
+
+/* Excel from current table order */
+function exportFullExcelFromTable(filename = 'students_export.xlsx') {
+  const dtData = getOrderedTableData();
+  if (!dtData || dtData.length === 0) return alert('No data to export.');
+
+  const rows = dtData.map(r => FULL_KEYS.map(k => r[k] || ''));
+
+  const aoa = [
+    [ERP_TITLE_LINES[0]],
+    [ERP_TITLE_LINES[1]],
+    [],
+    EXPORT_HEADERS,
+    ...rows
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Students');
+  XLSX.writeFile(wb, filename);
+}
+
+/* PDF from current table order — async because we embed logo via canvas */
+async function exportFullPDFFromTable() {
+  const dtData = getOrderedTableData();
+  if (!dtData || dtData.length === 0) return alert('No data to export.');
+
+  const rows = dtData.map(r => FULL_KEYS.map(k => r[k] || ''));
+
+  // get logo data URL (may return null)
+  const logoDataUrl = await getLogoDataURL();
+
+  // jsPDF
+  const { jsPDF } = window.jspdf;
+  // Use large paper size (landscape) to avoid cramped columns.
+  const doc = new jsPDF('l', 'pt', 'a2');
+
+  // Header: if logo available, draw it
+  const pageWidth = doc.internal.pageSize.getWidth();
+  let y = 25;
+  if (logoDataUrl) {
+    // maintain logo height ~ 60pt
+    const imgProps = doc.getImageProperties(logoDataUrl);
+    const imgW = 80;
+    const imgH = (imgProps.height / imgProps.width) * imgW;
+    doc.addImage(logoDataUrl, 'PNG', 40, y, imgW, imgH);
+    // text to right of logo
+    doc.setFontSize(12);
+    doc.setTextColor(25, 104, 55);
+    doc.text(ERP_TITLE_LINES[0], 40 + imgW + 10, y + 16);
+    doc.setFontSize(10);
+    doc.setTextColor(165, 42, 42);
+    doc.text(ERP_TITLE_LINES[1], 40 + imgW + 10, y + 34);
+    y += Math.max(imgH, 40) + 6;
+  } else {
+    // no logo: center titles
+    doc.setFontSize(12);
+    doc.setTextColor(25, 104, 55);
+    doc.text(ERP_TITLE_LINES[0], pageWidth / 2, y + 6, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setTextColor(165, 42, 42);
+    doc.text(ERP_TITLE_LINES[1], pageWidth / 2, y + 24, { align: 'center' });
+    y += 40;
+  }
+
+  // Add table via autoTable
+  doc.autoTable({
+    startY: y + 6,
+    head: [EXPORT_HEADERS],
+    body: rows,
+    theme: 'grid',
+    styles: { fontSize: 7, cellPadding: 3 },
+    headStyles: { fillColor: [40, 100, 200], textColor: 255 },
+    margin: { left: 10, right: 10, top: 10 },
+    // ensure header repeats on each page
+    didDrawPage: function (dataArg) {
+      // optional page footer could be added here
+    }
+  });
+
+  doc.save('students_full_export.pdf');
+}
+
+/* Print from current table order — will open a new window */
+function exportFullPrintFromTable() {
+  const dtData = getOrderedTableData();
+  if (!dtData || dtData.length === 0) return alert('No data to print.');
+
+  let html = `<html><head><title>Students</title>
+    <style>
+      body{font-family: 'Segoe UI',sans-serif; padding:20px; color:#000}
+      .header{display:flex;align-items:center;justify-content:flex-start;margin-bottom:10px}
+      .header img{height:85px;margin-right:12px}
+      table{width:100%;border-collapse:collapse; font-size:11px}
+      th,td{border:1px solid #ddd;padding:6px; white-space:nowrap}
+      th{background:#f5f5f5}
+    </style>
+    </head><body>`;
+
+  // Header with logo (use URL)
+  html += `<div class="header"><img src="{{ url_for('static', filename='images/logo.png') }}" /><div style="text-align:left; margin-left:8px">
+    <h5 style="margin:0;color:#198754">${ERP_TITLE_LINES[0]}</h5>
+    <h4 style="margin:2px 0 0 0;color:#a52a2a;text-transform:uppercase">${ERP_TITLE_LINES[1]}</h4>
+  </div></div>`;
+
+  html += '<table><thead><tr>';
+  html += EXPORT_HEADERS.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+
+  dtData.forEach((row, idx) => {
+    html += '<tr>';
+    html += FULL_KEYS.map(k => `<td>${(row[k]||'').toString()}</td>`).join('');
+    html += '</tr>';
+  });
+
+  html += '</tbody></table></body></html>';
+
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 700);
+}
+
+/* ---------- small helper ---------- */
+function escapeHtml(text){
+  return String(text || '').replace(/[&<>"]/g, function(s){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s]); });
+}
+</script>
+
+{% endblock %}

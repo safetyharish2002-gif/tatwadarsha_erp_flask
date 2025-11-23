@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Roll & Enrollment Allocation | Tatwadarsha ERP{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <h4 class="fw-bold mb-4 text-dark">🎓 Roll No & Enrollment Allocation</h4>
+
+  <!-- Filters Section -->
+  <div class="card shadow-sm border-0 glassy-form mb-4 p-3">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label">Course</label>
+        <select id="filter-course" class="form-select">
+          <option value="">All Courses</option>
+          {% for c in courses %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">Department</label>
+        <select id="filter-dept" class="form-select">
+          <option value="">All Departments</option>
+          {% for d in departments %}
+          <option value="{{ d }}">{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">Batch</label>
+        <select id="filter-batch" class="form-select">
+          <option value="">All Batches</option>
+          {% for b in batches %}
+          <option value="{{ b }}">{{ b }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">Session</label>
+        <select id="filter-session" class="form-select">
+          <option value="">All Sessions</option>
+          {% for s in sessions %}
+          <option value="{{ s }}">{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="text-end mt-3">
+      <button id="btnGenerate" class="btn btn-primary px-4" onclick="generateAutoRolls()">⚙️ Auto Generate</button>
+      <button id="btnSave" class="btn btn-success px-4" onclick="saveRollData()">💾 Save Changes</button>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="card shadow-sm border-0 glassy-form">
+    <div class="card-body">
+      <div id="loadingSpinner" class="text-center my-4" style="display:none;">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2 text-secondary">Fetching students...</p>
+      </div>
+
+      <div class="table-responsive">
+        <table id="rollTable" class="table table-hover align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Course</th>
+              <th>Department</th>
+              <th>Batch</th>
+              <th>Roll No</th>
+              <th>Enrollment No</th>
+            </tr>
+          </thead>
+
+          <tbody id="studentBody">
+            {% for s in students %}
+            <tr data-id="{{ s.id }}"
+                data-course="{{ s.course }}"
+                data-course-key="{{ s.course_key }}"
+                data-department="{{ s.department }}"
+                data-batch="{{ s.batch }}"
+                data-session="{{ s.session }}">
+              <td>{{ loop.index }}</td>
+              <td>{{ s.name }}</td>
+              <td>{{ s.course }}</td>
+              <td>{{ s.department }}</td>
+              <td>{{ s.batch }}</td>
+              <td><input type="text" class="form-control roll-input" value="{{ s.roll_no }}"></td>
+              <td><input type="text" class="form-control enroll-input" value="{{ s.enrollment_no }}"></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.glassy-form { background: rgba(255,255,255,0.75); backdrop-filter: blur(12px); border-radius:14px; }
+.table input { height:35px; font-size:0.9rem; }
+.table-hover tbody tr:hover { background-color: rgba(13,110,253,0.08); }
+</style>
+
+<script>
+/* ---------------------------
+   Fetch Filtered Students
+----------------------------- */
+async function fetchStudents() {
+  const course = document.getElementById("filter-course").value;
+  const department = document.getElementById("filter-dept").value;
+  const batch = document.getElementById("filter-batch").value;
+  const sessionVal = document.getElementById("filter-session").value;
+
+  const spinner = document.getElementById("loadingSpinner");
+  spinner.style.display = "block";
+  document.getElementById("btnSave").disabled = true;
+  document.getElementById("btnGenerate").disabled = true;
+
+  try {
+    const res = await fetch("/students/roll_allocation/filter", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ course, department, batch, session: sessionVal })
+    });
+    const data = await res.json();
+
+    spinner.style.display = "none";
+    document.getElementById("btnSave").disabled = false;
+    document.getElementById("btnGenerate").disabled = false;
+
+    const tbody = document.getElementById("studentBody");
+    tbody.innerHTML = "";
+
+    if (!data.success) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">⚠️ ${data.message}</td></tr>`;
+      return;
+    }
+
+    if (!data.students.length) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">No students found.</td></tr>`;
+      return;
+    }
+
+    data.students.forEach((s, i) => {
+      tbody.insertAdjacentHTML("beforeend", `
+        <tr data-id="${s.id}"
+            data-course="${s.course}"
+            data-course-key="${s.course_key}"
+            data-department="${s.department}"
+            data-batch="${s.batch}"
+            data-session="${s.session}">
+          <td>${i+1}</td>
+          <td>${s.name}</td>
+          <td>${s.course}</td>
+          <td>${s.department}</td>
+          <td>${s.batch}</td>
+          <td><input type="text" class="form-control roll-input" value="${s.roll_no || ''}"></td>
+          <td><input type="text" class="form-control enroll-input" value="${s.enrollment_no || ''}"></td>
+        </tr>
+      `);
+    });
+
+  } catch (err) {
+    spinner.style.display = "none";
+    alert("⚠️ Fetch error: " + err.message);
+  }
+}
+
+/* ---------------------------
+     Save Data
+----------------------------- */
+async function saveRollData() {
+  const rows = document.querySelectorAll("#rollTable tbody tr");
+  const updates = [];
+
+  rows.forEach(row => {
+    const id = row.dataset.id;
+    const course_key = row.dataset.courseKey;
+    const roll_no = row.querySelector(".roll-input").value.trim();
+    const enrollment_no = row.querySelector(".enroll-input").value.trim();
+    if (id) updates.push({ id, roll_no, enrollment_no, course_key });
+  });
+
+  if (!updates.length) return alert("⚠️ Nothing to save.");
+
+  document.getElementById("btnSave").disabled = true;
+
+  try {
+    const res = await fetch("/students/roll_allocation/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ updates })
+    });
+    const data = await res.json();
+
+    document.getElementById("btnSave").disabled = false;
+
+    if (data.success) {
+      alert(`✅ ${data.updated} records updated.`);
+      fetchStudents();
+    } else {
+      alert("❌ Save failed: " + data.message);
+    }
+
+  } catch (err) {
+    document.getElementById("btnSave").disabled = false;
+    alert("⚠️ Error saving: " + err.message);
+  }
+}
+
+/* ---------------------------
+     AUTO GENERATE: TIONS1, TIONS2...
+----------------------------- */
+async function generateAutoRolls() {
+  const course = document.getElementById("filter-course").value;
+  const batch = document.getElementById("filter-batch").value;
+
+  if (!course || !batch) return alert("⚠️ Select Course & Batch first.");
+
+  if (!confirm(`Auto generate for ${course} - ${batch}?`)) return;
+
+  document.getElementById("btnGenerate").disabled = true;
+
+  try {
+    const res = await fetch("/students/roll_allocation/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ course, batch })
+    });
+    const data = await res.json();
+
+    document.getElementById("btnGenerate").disabled = false;
+
+    if (data.success) {
+      alert(`✅ Auto-generated ${data.updated} roll numbers.`);
+      fetchStudents();
+    } else {
+      alert("❌ Generation failed: " + data.message);
+    }
+
+  } catch (err) {
+    document.getElementById("btnGenerate").disabled = false;
+    alert("⚠️ Error: " + err.message);
+  }
+}
+
+/* ---------------------------
+     INIT FILTER LISTENERS
+----------------------------- */
+document.addEventListener("DOMContentLoaded", () => {
+  ["filter-course", "filter-dept", "filter-batch", "filter-session"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("change", fetchStudents);
+  });
+});
+</script>
+
+{% endblock %}

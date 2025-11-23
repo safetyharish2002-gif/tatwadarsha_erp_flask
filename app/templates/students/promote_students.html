@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block title %}Promote Students | Tatwadarsha ERP{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <h4 class="fw-bold mb-3">Promote Students</h4>
+
+  <!-- FILTER PANEL -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="row g-3">
+
+        <div class="col-md-2">
+          <label>Session</label>
+          <select id="f_session" class="form-select">
+            <option value="">Select</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label>Course</label>
+          <select id="f_course" class="form-select">
+            <option value="">Select</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label>Branch</label>
+          <select id="f_branch" class="form-select">
+            <option value="">Select</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label>Department</label>
+          <select id="f_department" class="form-select">
+            <option value="">Select</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label>Batch</label>
+          <select id="f_batch" class="form-select">
+            <option value="">Select</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label>&nbsp;</label>
+          <button id="applyFilters" class="btn btn-primary w-100">View</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="card mb-4" id="studentsCard" style="display:none;">
+    <div class="card-header"><strong>Filtered Students</strong></div>
+    <div class="card-body">
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="selectAll"></th>
+            <th>Name</th>
+            <th>Reg. No</th>
+            <th>Session</th>
+            <th>Course</th>
+            <th>Branch</th>
+            <th>Department</th>
+            <th>Batch</th>
+          </tr>
+        </thead>
+        <tbody id="studentsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PROMOTE PANEL -->
+  <div class="card" id="promotePanel" style="display:none;">
+    <div class="card-header"><strong>Promote Selected Students</strong></div>
+    <div class="card-body">
+      <div class="row g-3">
+
+        <div class="col-md-2">
+          <label>New Session</label>
+          <select id="p_session" class="form-select">
+            <option value="">Select</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label>New Course</label>
+          <select id="p_course" class="form-select">
+            <option value="">Select</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label>New Branch</label>
+          <select id="p_branch" class="form-select">
+            <option value="">Select</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label>New Department</label>
+          <select id="p_department" class="form-select">
+            <option value="">Select</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label>New Batch</label>
+          <select id="p_batch" class="form-select">
+            <option value="">Select</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label>&nbsp;</label>
+          <button id="promoteBtn" class="btn btn-success w-100">Promote</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* Load Masters into selects (same master endpoints) */
+async function loadMasters(masterName, selectEl) {
+  try {
+    const res = await fetch(`/master/${masterName}/items`);
+    const data = await res.json();
+    if (!data || !data.items) return;
+    data.items.forEach(i => {
+      const opt = document.createElement("option");
+      opt.value = i.name;
+      opt.textContent = i.name;
+      selectEl.appendChild(opt);
+    });
+  } catch (e) {
+    console.warn("Failed to load master:", masterName, e);
+  }
+}
+
+["session","course","branch","department","batch"].forEach(m => {
+  const f = document.getElementById("f_" + m);
+  const p = document.getElementById("p_" + m);
+  if (f) loadMasters(m, f);
+  if (p) loadMasters(m, p);
+});
+
+/* Apply Filters -> fetch students for promotion */
+document.getElementById("applyFilters").addEventListener("click", async () => {
+  const params = {
+    session: document.getElementById("f_session").value || "",
+    course: document.getElementById("f_course").value || "",
+    branch: document.getElementById("f_branch").value || "",
+    department: document.getElementById("f_department").value || "",
+    batch: document.getElementById("f_batch").value || ""
+  };
+
+  const qs = new URLSearchParams(params).toString();
+  const res = await fetch(`/api/promote_get_students?${qs}`);
+  if (!res.ok) {
+    alert("Failed to fetch students");
+    return;
+  }
+  const data = await res.json();
+
+  const body = document.getElementById("studentsBody");
+  body.innerHTML = "";
+
+  // Expecting an array of flat student objects with id,name,register_number,session,course,branch,department,batch
+  if (!data.success || !data.students || data.students.length === 0) {
+    document.getElementById("studentsCard").style.display = "none";
+    document.getElementById("promotePanel").style.display = "none";
+    alert("No students found!");
+    return;
+  }
+
+  document.getElementById("studentsCard").style.display = "";
+  document.getElementById("promotePanel").style.display = "";
+
+  data.students.forEach(s => {
+    // Support both flat and older nested shapes: prefer flat fields, fallback to nested
+    const name = s.name || (s.personal && s.personal.name) || '-';
+    const reg  = s.register_number || (s.academic && s.academic.register_number) || (s.roll_no || '-');
+    const session = s.session || (s.academic && s.academic.session) || '-';
+    const course = s.course || (s.academic && s.academic.course) || '-';
+    const branch = s.branch || (s.academic && s.academic.branch) || '-';
+    const department = s.department || (s.academic && s.academic.department) || '-';
+    const batch = s.batch || (s.academic && s.academic.batch) || '-';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="checkbox" class="stu-check" value="${s.id}"></td>
+      <td>${escapeHtml(name)}</td>
+      <td>${escapeHtml(reg)}</td>
+      <td>${escapeHtml(session)}</td>
+      <td>${escapeHtml(course)}</td>
+      <td>${escapeHtml(branch)}</td>
+      <td>${escapeHtml(department)}</td>
+      <td>${escapeHtml(batch)}</td>
+    `;
+    body.appendChild(tr);
+  });
+
+  // ensure selectAll unchecked when new list loaded
+  const sa = document.getElementById("selectAll");
+  if (sa) sa.checked = false;
+});
+
+/* Select All checkbox */
+document.getElementById("selectAll").addEventListener("change", function() {
+  const checked = this.checked;
+  document.querySelectorAll(".stu-check").forEach(cb => cb.checked = checked);
+});
+
+/* Promote Button */
+document.getElementById("promoteBtn").addEventListener("click", async () => {
+  const checkedEls = Array.from(document.querySelectorAll(".stu-check:checked"));
+  if (checkedEls.length === 0) return alert("Select students!");
+
+  const ids = checkedEls.map(e => e.value);
+
+  const updates = {};
+  const s = document.getElementById("p_session").value;
+  const c = document.getElementById("p_course").value;
+  const b = document.getElementById("p_branch").value;
+  const d = document.getElementById("p_department").value;
+  const bt = document.getElementById("p_batch").value;
+
+  if (s) updates.session = s;
+  if (c) updates.course = c;
+  if (b) updates.branch = b;
+  if (d) updates.department = d;
+  if (bt) updates.batch = bt;
+
+  if (Object.keys(updates).length === 0) return alert("Select at least one new field to apply.");
+
+  try {
+    const res = await fetch("/api/promote_students", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ student_ids: ids, updates })
+    });
+    const out = await res.json();
+    if (out.success) {
+      alert("Promotion Complete: " + (out.updated || 0) + " students updated.");
+      // hide lists and clear
+      document.getElementById("studentsCard").style.display = "none";
+      document.getElementById("promotePanel").style.display = "none";
+      document.getElementById("studentsBody").innerHTML = "";
+    } else {
+      alert("Error: " + (out.message || "Unknown error"));
+    }
+  } catch (err) {
+    console.error(err);
+    alert("Server error while promoting students.");
+  }
+});
+
+/* Small helper to escape HTML content when injecting values */
+function escapeHtml(unsafe) {
+  if (unsafe === null || unsafe === undefined) return '';
+  return String(unsafe)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+</script>
+
+{% endblock %}

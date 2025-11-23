@@ -1,0 +1,627 @@
+{% extends "base.html" %}
+{% block title %}Dropout Students | Tatwadarsha ERP{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Dropout Management</h4>
+    <div>
+      <a href="{{ url_for('dashboard.dashboard') }}" class="btn btn-sm btn-outline-secondary">Back to Dashboard</a>
+    </div>
+  </div>
+
+  <!-- FILTER PANEL (only the requested filters) -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <form id="filterForm" class="row g-2 align-items-center">
+
+        <div class="col-md-2">
+          <select id="filterSession" class="form-select">
+            <option value="">Session</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <select id="filterCourse" class="form-select">
+            <option value="">Course</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <select id="filterBranch" class="form-select">
+            <option value="">Branch</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <select id="filterDepartment" class="form-select">
+            <option value="">Department</option>
+          </select>
+        </div>
+
+        <div class="col-md-1">
+          <select id="filterBatch" class="form-select">
+            <option value="">Batch</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <input id="filterRegister" class="form-control" placeholder="Search name / Reg. Number">
+        </div>
+
+        <div class="col-md-1 d-flex">
+          <button type="button" id="applyFilters" class="btn btn-primary me-1">Apply</button>
+          <button type="button" id="resetFilters" class="btn btn-outline-secondary">Reset</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <div id="infoBanner" class="alert alert-info">
+    By default: Dropout students are shown. Use filters/search to find active students and mark them dropped.
+  </div>
+
+  <!-- ACTIVE STUDENTS (appears only when filters produce active students) -->
+  <div class="card mb-3" id="activeCard" style="display:none;">
+    <div class="card-header">
+      <strong>Active Students (Filtered)</strong>
+    </div>
+
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover" id="activeTable">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Roll / Reg No</th>
+              <th>Course</th>
+              <th>Batch</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="activeBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- DROPOUT STUDENTS TABLE -->
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <strong>Dropout Students</strong>
+      <small class="text-muted">Dropped students shown by default</small>
+    </div>
+
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-striped" id="dropoutTable">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Roll / Reg</th>
+              <th>Course</th>
+              <th>Dropout Date</th>
+              <th>Reason</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="dropoutBody">
+            <!-- Filled by JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- VIEW / DROPOUT MODAL (same modal used for view & mark dropout) -->
+<div class="modal fade" id="studentModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title" id="studentModalTitle">Student Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" id="studentModalBody">
+        <!-- details inserted by JS -->
+        <div id="studentDetails" class="row"></div>
+
+        <hr class="my-3">
+
+        <!-- Dropout form (shown when marking dropped) -->
+        <form id="dropoutForm" style="display:none;">
+          <input type="hidden" id="md_student_id">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Dropout Date</label>
+              <input type="date" id="md_dropout_date" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Reason</label>
+              <input type="text" id="md_reason" class="form-control" placeholder="Reason (required)">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Remarks</label>
+              <input type="text" id="md_remarks" class="form-control" placeholder="Optional remarks">
+            </div>
+          </div>
+        </form>
+
+      </div>
+
+      <div class="modal-footer">
+        <button id="printCertBtn" class="btn btn-outline-secondary" style="display:none;">Print</button>
+        <button id="saveDropoutBtn" class="btn btn-danger" style="display:none;">Save as Dropped</button>
+        <button id="markAsDropBtn" class="btn btn-warning">Mark as Dropped</button>
+        <button id="viewOnlyCloseBtn" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- PRINT TEMPLATE JS (opens window.print) -->
+<script>
+function openPrintWindow(htmlContent, title = "Print") {
+  const w = window.open("", "", "width=900,height=1000");
+  w.document.write(htmlContent);
+  w.document.close();
+  setTimeout(() => { w.print(); }, 300);
+}
+</script>
+
+<script>
+/* -------------------------
+   Utility: normalize dropout data shape
+   Accepts either:
+     - student object (has personal, academic keys)
+     - wrapped object: { info: {...}, dropout: {...} }
+   Returns: { student: {...}, dropout: {...}, id }
+   ------------------------- */
+function normalizeDropoutRecord(obj, keyId) {
+  // If object already is top-level student (no wrapper)
+  if (obj && obj.personal && obj.academic) {
+    return { student: obj, dropout: (obj.dropout || {}), id: (obj.id || keyId) };
+  }
+  // If wrapper shape { info, dropout }
+  if (obj && obj.info) {
+    const st = obj.info;
+    // keep id at top-level if present
+    return { student: st, dropout: (obj.dropout || {}), id: (obj.id || keyId) };
+  }
+  // fallback: try to find inside info
+  return { student: obj || {}, dropout: {}, id: (obj && obj.id) || keyId || '' };
+}
+
+/* -------------------------
+   Utility: Render student details HTML (same layout as your view)
+   ------------------------- */
+function buildStudentDetailsHtml(student) {
+  const sec = (title, rows) => `
+    <div class="col-12 section-title fw-bold text-primary mb-2">${title}</div>
+    <div class="col-12 mb-2">
+      <table class="table table-borderless" style="width:100%; max-width:100%;">
+        ${rows.map(([label, val]) => `
+          <tr>
+            <td style="width:30%; font-weight:600;">${label}</td>
+            <td>${val ?? '-'}</td>
+          </tr>`).join('')}
+      </table>
+    </div>
+  `;
+
+  const personal = student.personal || {};
+  const academic = student.academic || {};
+  const family = student.family || {};
+  const bank = student.bank || {};
+
+  return `
+    <div class="row">
+      ${sec('Personal Details', [
+        ['Name', personal.name],
+        ['DOB', personal.dob],
+        ['Gender', personal.gender],
+        ['Religion', personal.religion],
+        ['Caste', personal.caste],
+        ['Category', personal.category],
+        ['Aadhaar', personal.aadhaar],
+        ['Blood Group', personal.blood_group],
+        ['Email', personal.email],
+        ['Phone', personal.phone],
+        ['Address', personal.address]
+      ])}
+
+      ${sec('Academic Details', [
+        ['Session', academic.session],
+        ['Course', academic.course],
+        ['Branch', academic.branch],
+        ['Department', academic.department],
+        ['Batch', academic.batch],
+        ['Register Number', academic.register_number],
+        ['Admission Date', academic.admission_date],
+        ['Previous School', academic.previous_school],
+        ['10th Board', academic.tenth_board],
+        ['10th %', academic.tenth_percent],
+        ['12th Board', academic.twelfth_board],
+        ['12th %', academic.twelfth_percent],
+        ['Last Exam Passed', academic.last_exam_passed]
+      ])}
+
+      ${sec('Family Details', [
+        ['Father', family.father_name],
+        ['Father Occupation', family.father_occupation],
+        ['Father Mobile', family.father_mobile],
+        ['Mother', family.mother_name],
+        ['Mother Occupation', family.mother_occupation],
+        ['Mother Mobile', family.mother_mobile],
+        ['Guardian', family.guardian_name],
+        ['Guardian Mobile', family.guardian_mobile],
+        ['Guardian Email', family.guardian_email],
+        ['Annual Income', family.annual_income]
+      ])}
+
+      ${sec('Bank Details', [
+        ['Account Holder', bank.account_holder],
+        ['Account Number', bank.account_number],
+        ['Bank Name', bank.bank_name],
+        ['IFSC', bank.ifsc]
+      ])}
+    </div>
+  `;
+}
+
+/* -------------------------
+   Printing Dropout Certificate (A4-like)
+   ------------------------- */
+function printDropoutCertificate(record) {
+  const st = normalizeDropoutRecord(record).student;
+  const dropout = normalizeDropoutRecord(record).dropout || {};
+  const detailsHtml = buildStudentDetailsHtml(st);
+  const html = `
+    <html>
+      <head>
+        <title>Dropout Certificate</title>
+        <style>
+          body { font-family: 'Segoe UI', sans-serif; padding:40px; color:#000; }
+          .header { text-align:center; margin-bottom:20px; }
+          .header img { height:80px; }
+          h2 { margin:6px 0; color:#333; }
+          table { width:100%; border-collapse:collapse; margin-top:8px; }
+          td { padding:6px 8px; vertical-align:top; }
+          .section-title { font-weight:bold; margin-top:16px; color:#004085; }
+        </style>
+      </head>
+      <body onload="">
+        <div class="header">
+          <img src="{{ url_for('static', filename='images/logo.png') }}" alt="logo">
+          <h2>Dropout Certificate</h2>
+          <p><strong>Tatwadarsha Institute of Nursing Sciences</strong></p>
+        </div>
+        ${detailsHtml}
+        <div class="section-title">Dropout Information</div>
+        <table>
+          <tr><td style="width:20%;"><strong>Date</strong></td><td>${dropout.date || '-'}</td></tr>
+          <tr><td><strong>Reason</strong></td><td>${dropout.reason || '-'}</td></tr>
+          <tr><td><strong>Remarks</strong></td><td>${dropout.remarks || '-'}</td></tr>
+        </table>
+      </body>
+    </html>
+  `;
+  openPrintWindow(html, "Dropout Certificate");
+}
+
+/* -------------------------
+   Page Logic
+   ------------------------- */
+document.addEventListener("DOMContentLoaded", () => {
+
+  // Elements
+  const filterSession = document.getElementById("filterSession");
+  const filterCourse = document.getElementById("filterCourse");
+  const filterBranch = document.getElementById("filterBranch");
+  const filterDepartment = document.getElementById("filterDepartment");
+  const filterBatch = document.getElementById("filterBatch");
+  const filterRegister = document.getElementById("filterRegister");
+
+  const applyBtn = document.getElementById("applyFilters");
+  const resetBtn = document.getElementById("resetFilters");
+
+  const activeCard = document.getElementById("activeCard");
+  const activeBody = document.getElementById("activeBody");
+  const dropoutBody = document.getElementById("dropoutBody");
+
+  // modal
+  const studentModal = new bootstrap.Modal(document.getElementById("studentModal"));
+  const mdTitle = document.getElementById("studentModalTitle");
+  const studentDetailsEl = document.getElementById("studentDetails");
+  const dropoutForm = document.getElementById("dropoutForm");
+  const mdStudentId = document.getElementById("md_student_id");
+  const mdDate = document.getElementById("md_dropout_date");
+  const mdReason = document.getElementById("md_reason");
+  const mdRemarks = document.getElementById("md_remarks");
+
+  const markAsDropBtn = document.getElementById("markAsDropBtn");
+  const saveDropoutBtn = document.getElementById("saveDropoutBtn");
+  const printCertBtn = document.getElementById("printCertBtn");
+
+  // Load masters into select boxes (same method as your add student page)
+  async function loadMasterInto(selectEl, masterName) {
+    try {
+      const res = await fetch(`/master/${masterName}/items`);
+      const data = await res.json();
+      selectEl.innerHTML = `<option value="">${selectEl.querySelector('option')?.textContent || ''}</option>`;
+      (data.items || []).forEach(it => {
+        const opt = document.createElement("option");
+        opt.value = it.name;
+        opt.textContent = it.name;
+        selectEl.appendChild(opt);
+      });
+    } catch (err) {
+      console.warn("Failed to load master:", masterName, err);
+    }
+  }
+
+  // populate all master selects
+  loadMasterInto(filterSession, "session");
+  loadMasterInto(filterCourse, "course");
+  loadMasterInto(filterBranch, "branch");
+  loadMasterInto(filterDepartment, "department");
+  loadMasterInto(filterBatch, "batch");
+
+  // Fetch students & dropouts from your API endpoint
+  async function fetchStudents(params = {}) {
+    const qs = new URLSearchParams(params);
+    const res = await fetch("/api/get_students?" + qs.toString());
+    if (!res.ok) {
+      console.error("Failed to fetch students", res.statusText);
+      return { students: [], dropouts: [] };
+    }
+    return res.json();
+  }
+
+  // render active table
+  function renderActive(students) {
+    activeBody.innerHTML = "";
+    if (!students || students.length === 0) {
+      activeCard.style.display = "none";
+      return;
+    }
+    activeCard.style.display = "";
+    students.forEach((s, i) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${i+1}</td>
+        <td>${s.personal?.name || '-'}</td>
+        <td>${s.academic?.register_number || s.personal?.roll_no || '-'}</td>
+        <td>${s.academic?.course || '-'}</td>
+        <td>${s.academic?.batch || '-'}</td>
+        <td>
+          <button class="btn btn-sm btn-outline-primary view-student" data-student='${JSON.stringify(s)}'>View</button>
+          <button class="btn btn-sm btn-warning ms-1 mark-drop" data-student='${JSON.stringify(s)}'>Mark as Dropped</button>
+        </td>
+      `;
+      activeBody.appendChild(tr);
+    });
+  }
+
+  // render dropouts
+  function renderDropouts(arr) {
+    dropoutBody.innerHTML = "";
+    if (!arr || arr.length === 0) {
+      dropoutBody.innerHTML = `<tr><td colspan="7" class="text-center">No dropout students</td></tr>`;
+      return;
+    }
+    arr.forEach((d, i) => {
+      // normalize possible shapes
+      const norm = normalizeDropoutRecord(d, d.id || '');
+      const st = norm.student;
+      const dr = norm.dropout || {};
+      const id = norm.id || '';
+      const tr = document.createElement("tr");
+      tr.id = `dropout-row-${id}`;
+      tr.dataset.student = JSON.stringify(d);
+      tr.innerHTML = `
+        <td>${i+1}</td>
+        <td>${st.personal?.name || '-'} <span class="badge bg-danger ms-2">DROPPED</span></td>
+        <td>${st.academic?.register_number || st.personal?.roll_no || '-'}</td>
+        <td>${st.academic?.course || '-'}</td>
+        <td>${dr.date || '-'}</td>
+        <td>${dr.reason || '-'}</td>
+        <td>
+          <button class="btn btn-sm btn-outline-primary view-drop" data-student='${JSON.stringify(d)}'>View</button>
+          <button class="btn btn-sm btn-success ms-1 restore-student" data-id="${id}">Mark as Admitted</button>
+        </td>
+      `;
+      dropoutBody.appendChild(tr);
+    });
+  }
+
+  // initial load: fetch only dropouts (and active only when user applies filters)
+  (async function init() {
+    const resp = await fetchStudents({});
+    const data = resp || {};
+    renderDropouts(data.dropouts || []);
+    activeCard.style.display = "none";
+  })();
+
+  // apply filters (works if any field filled)
+  applyBtn.addEventListener("click", async () => {
+    // send params that backend expects: course, year, semester, section, search
+    const params = {
+      course: filterCourse.value || "",
+      year: filterBatch.value || "",
+      semester: "", // compatibility
+      section: "",  // compatibility
+      search: (filterRegister.value || "").trim()
+    };
+
+    const resp = await fetchStudents(params);
+    if (!resp || !resp.success) {
+      renderActive([]);
+      renderDropouts(resp.dropouts || []);
+      return;
+    }
+    renderActive(resp.students || []);
+    renderDropouts(resp.dropouts || []);
+  });
+
+  // reset filters
+  resetBtn.addEventListener("click", async () => {
+    filterSession.value = "";
+    filterCourse.value = "";
+    filterBranch.value = "";
+    filterDepartment.value = "";
+    filterBatch.value = "";
+    filterRegister.value = "";
+    activeCard.style.display = "none";
+    const resp = await fetchStudents({});
+    renderDropouts(resp.dropouts || []);
+  });
+
+  /* ----------------
+     Global click handler (OPTION A)
+     ---------------- */
+  document.body.addEventListener("click", async (ev) => {
+    const t = ev.target;
+
+    // View active student
+    if (t.classList.contains("view-student")) {
+      const s = JSON.parse(t.getAttribute("data-student"));
+      mdTitle.textContent = "View Student";
+      studentDetailsEl.innerHTML = buildStudentDetailsHtml(s);
+      dropoutForm.style.display = "none";
+      mdStudentId.value = s.id || '';
+      // show Mark button (allow opening dropout form)
+      markAsDropBtn.style.display = "";
+      saveDropoutBtn.style.display = "none";
+      printCertBtn.style.display = "none";
+      // remember modal student for printing
+      window._modalStudent = s;
+      studentModal.show();
+      return;
+    }
+
+    // Mark as Dropped button in active table
+    if (t.classList.contains("mark-drop")) {
+      const s = JSON.parse(t.getAttribute("data-student"));
+      mdTitle.textContent = "Mark as Dropped";
+      studentDetailsEl.innerHTML = buildStudentDetailsHtml(s);
+      dropoutForm.style.display = "";
+      mdStudentId.value = s.id || '';
+      mdDate.value = new Date().toISOString().slice(0,10);
+      mdReason.value = '';
+      mdRemarks.value = '';
+      markAsDropBtn.style.display = "none";
+      saveDropoutBtn.style.display = "";
+      printCertBtn.style.display = "none";
+      // keep JSON for printing if needed
+      window._modalStudent = s;
+      studentModal.show();
+      return;
+    }
+
+    // Save as Dropped (from modal)  <-- OPTION A handler (fixed route + JSON keys)
+    if (t.id === "saveDropoutBtn") {
+      const sid = mdStudentId.value;
+      const date = mdDate.value;
+      const reason = mdReason.value.trim();
+      const remarks = mdRemarks.value.trim();
+
+      if (!sid) { alert("Student id missing"); return; }
+      if (!date || !reason) { alert("Please fill dropout date and reason."); return; }
+
+      try {
+        const res = await fetch("/api/mark_dropout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ student_id: sid, date: date, reason: reason, remarks: remarks })
+        });
+        const out = await res.json();
+        if (out.success) {
+          // update UI: reload dropouts & hide active
+          const resp = await fetchStudents({});
+          renderDropouts(resp.dropouts || []);
+          renderActive([]); activeCard.style.display = "none";
+          studentModal.hide();
+          alert("Student moved to Dropout list");
+        } else {
+          alert("Failed: " + (out.message || "unknown"));
+        }
+      } catch (err) {
+        console.error(err); alert("Server error while marking dropout");
+      }
+      return;
+    }
+
+    // View dropout student in Dropout table
+    if (t.classList.contains("view-drop")) {
+      const raw = JSON.parse(t.getAttribute("data-student"));
+      const norm = normalizeDropoutRecord(raw);
+      const s = norm.student;
+      mdTitle.textContent = "View Dropout Student";
+      studentDetailsEl.innerHTML = buildStudentDetailsHtml(s);
+      dropoutForm.style.display = "none";
+      mdStudentId.value = norm.id || '';
+      markAsDropBtn.style.display = "none";
+      saveDropoutBtn.style.display = "none";
+      printCertBtn.style.display = "";
+      // store modal student as the normalized record (so printing has dropout info)
+      window._modalStudent = raw;
+      studentModal.show();
+      return;
+    }
+
+    // Print dropout certificate (from modal or dropout table)
+    if (t.id === "printCertBtn" || t.classList.contains("print-drop")) {
+      const rec = window._modalStudent || null;
+      if (!rec) {
+        alert("No student loaded for printing");
+        return;
+      }
+      printDropoutCertificate(rec);
+      return;
+    }
+
+    // restore student from dropout table
+    if (t.classList.contains("restore-student")) {
+      const sid = t.getAttribute("data-id");
+      if (!confirm("Mark this student as admitted? They will return to active records.")) return;
+      try {
+        const res = await fetch("/mark_admit", {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ student_id: sid })
+        });
+        const out = await res.json();
+        if (out.success) {
+          // remove row and refresh dropouts
+          const resp = await fetchStudents({});
+          renderDropouts(resp.dropouts || []);
+          alert("Student restored to active records");
+        } else {
+          alert("Failed: " + (out.message || "unknown"));
+        }
+      } catch (err) {
+        console.error(err); alert("Server error while restoring student");
+      }
+      return;
+    }
+  });
+
+  // Save dropdown student view state into window var whenever modal opens for print usage
+  const modalEl = document.getElementById("studentModal");
+  modalEl.addEventListener("show.bs.modal", (ev) => {
+    // nothing extra required; handlers set window._modalStudent appropriately
+  });
+
+});
+</script>
+
+{% endblock %}

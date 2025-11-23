@@ -1,0 +1,286 @@
+/* =====================
+   Tatwadarsha ERP NEXT GEN
+   Sidebar + Dashboard Styling (Final Polished Version)
+   ===================== */
+
+:root {
+  --bg-dark: #0e1621;
+  --bg-light: #172a45;
+  --card-bg: rgba(255, 255, 255, 0.07);
+  --border-glow: rgba(255, 255, 255, 0.15);
+  --accent: #00f5d4;
+  --text: #e6f1ff;
+  --muted: rgba(230, 241, 255, 0.6);
+  --sidebar-width: 260px;
+}
+
+/* ===== Reset ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* ===== Base Layout ===== */
+body {
+  background: linear-gradient(135deg, var(--bg-dark), var(--bg-light));
+  color: var(--text);
+  min-height: 100vh;
+  overflow: hidden;
+  transition: background 0.5s ease, color 0.5s ease;
+}
+
+.erp-wrapper {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ===== Sidebar ===== */
+.erp-sidebar {
+  width: var(--sidebar-width);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(14px);
+  border-right: 1px solid var(--border-glow);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) transparent;
+  transition: background 0.4s ease, color 0.4s ease;
+}
+.erp-sidebar::-webkit-scrollbar { width: 6px; }
+.erp-sidebar::-webkit-scrollbar-thumb {
+  background-color: var(--accent);
+  border-radius: 8px;
+}
+
+/* ===== Logo ===== */
+.erp-sidebar .logo {
+  text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.erp-sidebar .logo img {
+  width: 52px;
+  height: 52px;
+}
+.erp-sidebar .logo div {
+  text-align: left;
+}
+.erp-sidebar .logo h2,
+.erp-sidebar .logo .fw-bold {
+  font-size: 17px;
+  color: var(--accent);
+}
+
+/* ===== Sidebar Links ===== */
+.erp-link {
+  display: block;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 10px 16px;
+  margin: 3px 6px;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+.erp-link:hover {
+  background: var(--accent);
+  color: #042022;
+  transform: translateX(4px);
+  box-shadow: 0 0 8px var(--accent);
+}
+.erp-link.active {
+  background: var(--accent);
+  color: #042022;
+  font-weight: 700;
+  box-shadow: inset 0 0 10px var(--accent);
+}
+
+/* ===== Master & Student Dropdowns ===== */
+.sidebar-dropdown {
+  margin-top: 10px;
+}
+.dropdown-btn {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 15px;
+  width: 100%;
+  padding: 10px 18px;
+  text-align: left;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: 0.3s ease;
+}
+.dropdown-btn:hover,
+.dropdown-btn.active {
+  background: var(--accent);
+  color: #042022;
+  box-shadow: 0 0 6px var(--accent);
+}
+.dropdown-btn .arrow {
+  transition: transform 0.3s ease;
+}
+.dropdown-container {
+  display: none;
+  background: rgba(255, 255, 255, 0.05);
+  border-left: 2px solid var(--accent);
+  border-radius: 6px;
+  padding-left: 8px;
+  margin-top: 4px;
+  transition: all 0.3s ease;
+}
+.dropdown-container.show {
+  display: block;
+  animation: fadeIn 0.3s ease;
+}
+.dropdown-container a {
+  display: block;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  text-decoration: none;
+  transition: 0.2s;
+}
+.dropdown-container a:hover,
+.dropdown-container a.active {
+  background: var(--accent);
+  color: #042022;
+  font-weight: 600;
+  box-shadow: 0 0 6px var(--accent);
+}
+
+/* ===== Logout Button ===== */
+.btn-outline-danger {
+  color: #ff6b6b;
+  border-color: #ff6b6b;
+}
+.btn-outline-danger:hover {
+  background-color: #ff6b6b;
+  color: #fff;
+}
+
+/* ===== Main Content ===== */
+.erp-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.erp-topbar {
+  background: #ffffff;
+  border-bottom: 1px solid #ddd;
+  color: #212529;
+  padding: 14px 25px;
+  z-index: 100;
+}
+.erp-topbar h5 {
+  font-weight: 600;
+  color: #1a1a1a !important;
+}
+
+/* ===== Content Area ===== */
+.erp-content {
+  flex: 1;
+  background-color: #ffffff !important;
+  color: #212529;
+  min-height: calc(100vh - 70px);
+  padding: 25px;
+  overflow-y: auto;
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.05);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  transition: background 0.4s ease, color 0.4s ease;
+}
+
+/* ===== Glassy Cards & Tables ===== */
+.erp-content .card,
+.erp-content table {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  border: 1px solid rgba(0, 245, 212, 0.15);
+  box-shadow: 0 2px 12px rgba(0, 245, 212, 0.1);
+  transition: all 0.3s ease;
+}
+.erp-content .card:hover,
+.erp-content table:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(0, 245, 212, 0.2);
+}
+
+/* ===== Scrollbars ===== */
+.erp-sidebar::-webkit-scrollbar-thumb,
+.erp-content::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 245, 212, 0.4);
+  border-radius: 4px;
+}
+
+/* ===== Animations ===== */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== Dark Mode ===== */
+body.dark-mode {
+  background: linear-gradient(145deg, #0c0f18, #141d33);
+  color: var(--text);
+}
+body.dark-mode .erp-sidebar {
+  background: rgba(255, 255, 255, 0.05);
+  border-right: 1px solid rgba(0, 245, 212, 0.3);
+}
+body.dark-mode .erp-topbar {
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(0, 245, 212, 0.3);
+  color: var(--text);
+}
+body.dark-mode .erp-content {
+  background: rgba(14, 22, 33, 0.9);
+  color: var(--text);
+  border: 1px solid rgba(0, 245, 212, 0.15);
+  box-shadow: 0 0 30px rgba(0, 245, 212, 0.1);
+}
+body.dark-mode .card,
+body.dark-mode table {
+  background: rgba(22, 32, 48, 0.9);
+  border: 1px solid rgba(0, 245, 212, 0.2);
+}
+body.dark-mode .erp-link.active,
+body.dark-mode .dropdown-container a.active {
+  background: var(--accent);
+  color: #042022;
+}
+body.dark-mode .erp-link:hover {
+  background: var(--accent);
+  color: #042022;
+}
+
+/* ===== Mobile Sidebar ===== */
+@media (max-width: 768px) {
+  .erp-sidebar {
+    position: fixed;
+    left: -260px;
+    top: 0;
+    height: 100vh;
+    z-index: 1050;
+    transition: left 0.3s ease;
+  }
+  .erp-sidebar.active {
+    left: 0;
+  }
+}

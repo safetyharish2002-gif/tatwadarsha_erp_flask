@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block title %}View Students | Tatwadarsha ERP{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <!-- AUTO-FILTER SCRIPT (ADDED FOR DASHBOARD) -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const filterCourse = urlParams.get("course");
+
+      if (filterCourse) {
+        const rows = document.querySelectorAll("#studentsBody tr");
+        rows.forEach(row => {
+          const course = row.querySelector(".course-col").innerText.toLowerCase();
+          if (course.includes(filterCourse.toLowerCase())) {
+            row.style.display = "";
+          } else {
+            row.style.display = "none";
+          }
+        });
+        reindexRows();
+      }
+    });
+  </script>
+
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="fw-bold text-dark mb-0">🎓 View Students</h4>
+    <div>
+      <a href="{{ url_for('students.students_home') }}" class="btn btn-primary btn-sm me-2">➕ Add New</a>
+      <a href="{{ url_for('students.bulk_upload_students') }}" class="btn btn-secondary btn-sm">⬆️ Bulk Upload</a>
+    </div>
+  </div>
+
+  <!-- Search -->
+  <div class="input-group mb-3">
+    <span class="input-group-text bg-primary text-white">🔍</span>
+    <input id="searchInput" type="text" class="form-control" placeholder="Search by name, course, reg no, phone...">
+  </div>
+
+  <!-- SORTING DROPDOWN -->
+  <div class="mb-3" style="max-width:260px;">
+    <select id="sortSelect" class="form-select">
+      <option value="">Sort By</option>
+      <option value="az">Name A → Z</option>
+      <option value="za">Name Z → A</option>
+      <option value="roll_low">Reg. No / Roll ↑</option>
+      <option value="roll_high">Reg. No / Roll ↓</option>
+    </select>
+  </div>
+
+  <!-- Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="mt-2">
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+      {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <!-- Students Table -->
+  {% if students %}
+  <div class="table-responsive glass-card rounded-4 p-3 shadow-sm">
+    <table id="studentsTable" class="table table-striped table-hover align-middle mb-0 text-center">
+      <thead style="background:#004085; color:#fff;" class="align-middle">
+        <tr>
+          <th style="width:5%;">Sl. No</th>
+          <th style="width:15%;">Name</th>
+          <th style="width:15%;">Course</th>
+          <th style="width:15%;">Department</th>
+          <th style="width:10%;">Batch</th>
+          <th style="width:10%;">Reg. No</th>
+          <th style="width:10%;">Session</th>
+          <th style="width:10%;">Phone</th>
+          <th style="width:10%;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="studentsBody">
+        {% for student in students %}
+        <tr>
+          <td>{{ loop.index }}</td>
+
+          <!-- FLAT FIELDS -->
+          <td class="name-col">{{ student.name }}</td>
+          <td class="course-col">{{ student.course }}</td>
+          <td class="dept-col">{{ student.department }}</td>
+          <td class="batch-col">{{ student.batch }}</td>
+          <td class="reg-col">{{ student.register_number }}</td>
+          <td class="session-col">{{ student.session }}</td>
+          <td class="phone-col">{{ student.phone }}</td>
+
+          <td>
+            <div class="d-flex justify-content-center gap-1">
+              <button type="button" class="btn btn-info btn-sm" 
+                      data-bs-toggle="modal"
+                      data-bs-target="#viewModal" 
+                      data-student='{{ student | tojson }}'>👁</button>
+
+              <a href="{{ url_for('students.edit_student', student_id=student.id) }}" class="btn btn-warning btn-sm">✏</a>
+
+              <form action="{{ url_for('students.delete_student', student_id=student.id) }}" method="POST" style="display:inline;">
+                <button type="submit" class="btn btn-danger btn-sm"
+                  onclick="return confirm('Are you sure you want to delete this student?');">🗑</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-warning mt-3 text-center rounded-4 shadow-sm">
+    ⚠️ No students found in the database.
+  </div>
+  {% endif %}
+</div>
+
+<!-- Student View Modal -->
+<div class="modal fade" id="viewModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content glass-card p-4">
+      <div class="modal-header border-0 justify-content-center">
+        <div class="d-flex align-items-center justify-content-center w-100 text-center">
+          <img src="{{ url_for('static', filename='images/logo.png') }}" height="75" alt="Logo" class="me-3">
+          <div>
+            <h6 class="fw-bold text-success mb-0">GLOBAL EDUCATION ACADEMY (R)</h6>
+            <h5 class="fw-bold text-danger text-uppercase mb-0">TATWADARSHA INSTITUTE OF NURSING SCIENCES, HUBBALLI</h5>
+          </div>
+        </div>
+        <button class="btn btn-outline-dark btn-sm position-absolute end-0 me-3" onclick="printProfile()">🖨 Print</button>
+      </div>
+
+      <div class="modal-body" id="studentDetailsContainer">
+        <div id="studentDetails" class="row g-2"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Styles -->
+<style>
+.glass-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+}
+.section-title {
+  font-weight: 600;
+  color: #004085;
+  border-bottom: 2px solid #00408533;
+  margin-top: 25px;
+  padding-bottom: 5px;
+}
+.detail-table td {
+  padding: 6px 10px;
+  border-bottom: 1px dashed #dcdcdc;
+}
+.detail-table td:first-child {
+  width: 35%;
+  font-weight: 600;
+}
+.detail-table td:last-child {
+  text-align: left;
+}
+</style>
+
+<!-- Scripts -->
+<script>
+/* SEARCH */
+document.getElementById("searchInput").addEventListener("input", function() {
+  const q = this.value.trim().toLowerCase();
+  const rows = document.querySelectorAll("#studentsBody tr");
+
+  rows.forEach(row => {
+    const name = row.querySelector(".name-col").innerText.toLowerCase();
+    const course = row.querySelector(".course-col").innerText.toLowerCase();
+    const reg = row.querySelector(".reg-col").innerText.toLowerCase();
+    const phone = row.querySelector(".phone-col").innerText.toLowerCase();
+
+    const hay = `${name} ${course} ${reg} ${phone}`;
+    row.style.display = hay.includes(q) ? "" : "none";
+  });
+
+  reindexRows();
+});
+
+/* SORT */
+document.getElementById("sortSelect").addEventListener("change", function() {
+  const opt = this.value;
+  const tbody = document.getElementById("studentsBody");
+  const rows = Array.from(tbody.querySelectorAll("tr"));
+
+  rows.sort((a, b) => {
+    const nameA = a.querySelector(".name-col").innerText.toLowerCase();
+    const nameB = b.querySelector(".name-col").innerText.toLowerCase();
+    const regA = a.querySelector(".reg-col").innerText;
+    const regB = b.querySelector(".reg-col").innerText;
+
+    if (opt === "az") return nameA.localeCompare(nameB);
+    if (opt === "za") return nameB.localeCompare(nameA);
+
+    if (opt === "roll_low") return regA.localeCompare(regB, undefined, { numeric: true });
+    if (opt === "roll_high") return regB.localeCompare(regA, undefined, { numeric: true });
+
+    return 0;
+  });
+
+  tbody.innerHTML = "";
+  rows.forEach(r => tbody.appendChild(r));
+
+  reindexRows();
+});
+
+/* REINDEX */
+function reindexRows() {
+  const rows = document.querySelectorAll("#studentsBody tr");
+  let i = 1;
+  rows.forEach(row => {
+    if (row.style.display !== "none") {
+      row.querySelector("td").innerText = i++;
+    }
+  });
+}
+
+/* MODAL DETAILS */
+document.getElementById("viewModal").addEventListener("show.bs.modal", event => {
+  const student = JSON.parse(event.relatedTarget.getAttribute("data-student"));
+  const c = document.getElementById("studentDetails");
+
+  const sec = (title, rows) => `
+    <div class="col-12 section-title">${title}</div>
+    <div class="col-12">
+      <table class="detail-table" style="width:100%;">
+      ${rows.map(([label, value]) => `
+        <tr><td>${label}</td><td>${value || '-'}</td></tr>
+      `).join('')}
+      </table>
+    </div>`;
+
+  c.innerHTML =
+    sec("Personal Details", [
+      ["Name", student.name],
+      ["DOB", student.dob],
+      ["Gender", student.gender],
+      ["Religion", student.religion],
+      ["Caste", student.caste],
+      ["Category", student.category],
+      ["Aadhaar", student.aadhaar],
+      ["Blood Group", student.blood_group],
+      ["Email", student.email],
+      ["Phone", student.phone],
+      ["Address", student.address]
+    ]) +
+
+    sec("Academic Details", [
+      ["Session", student.session],
+      ["Course", student.course],
+      ["Branch", student.branch],
+      ["Department", student.department],
+      ["Batch", student.batch],
+      ["Register Number", student.register_number],
+      ["Admission Date", student.admission_date],
+      ["Last Exam Passed", student.last_exam_passed],
+      ["Previous School", student.previous_school],
+      ["10th Board", student.tenth_board],
+      ["10th %", student.tenth_percent],
+      ["12th Board", student.twelfth_board],
+      ["12th %", student.twelfth_percent]
+    ]) +
+
+    sec("Family Details", [
+      ["Father Name", student.father_name],
+      ["Father Occupation", student.father_occupation],
+      ["Father Mobile", student.father_mobile],
+      ["Mother Name", student.mother_name],
+      ["Mother Occupation", student.mother_occupation],
+      ["Mother Mobile", student.mother_mobile],
+      ["Guardian Name", student.guardian_name],
+      ["Guardian Mobile", student.guardian_mobile],
+      ["Guardian Email", student.guardian_email],
+      ["Annual Income", student.annual_income]
+    ]) +
+
+    sec("Bank Details", [
+      ["Account Holder", student.account_holder],
+      ["Account Number", student.account_number],
+      ["Bank Name", student.bank_name],
+      ["IFSC", student.ifsc]
+    ]);
+});
+
+/* PRINT */
+function printProfile() {
+  const modalBody = document.querySelector("#studentDetailsContainer").innerHTML;
+  const printWindow = window.open('', '', 'width=900,height=1000');
+
+  printWindow.document.write(`
+    <html>
+    <head>
+      <title>Student Profile</title>
+      <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 40px; }
+        .header { text-align:center; margin-bottom:20px; }
+        .section-title { font-weight:bold; border-bottom:1px solid #ddd; margin-top:20px; }
+        table { width:100%; border-collapse:collapse; }
+        td { padding:6px; border-bottom:1px dashed #ddd; }
+        td:first-child { font-weight:bold; width:35%; }
+      </style>
+    </head>
+    <body onload="window.print()">
+      ${modalBody}
+    </body>
+    </html>
+  `);
+
+  printWindow.document.close();
+}
+</script>
+
+{% endblock %}

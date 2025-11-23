@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{{ title }} — Tatwadarsha ERP</title>
+
+  <!-- Bootstrap & Custom CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+  <style>
+    body {
+      background-color: #f9f9f9;
+      overflow: hidden;
+    }
+    .erp-wrapper {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    /* Sidebar */
+    .erp-sidebar {
+      width: 260px;
+      background-color: #1e1e2d;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      transition: all 0.3s ease;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #00f5d4 transparent;
+    }
+    .erp-sidebar::-webkit-scrollbar { width: 6px; }
+    .erp-sidebar::-webkit-scrollbar-thumb {
+      background-color: #00f5d4;
+      border-radius: 8px;
+    }
+    .erp-sidebar .logo {
+      display: flex;
+      align-items: center;
+      padding: 15px;
+      border-bottom: 1px solid #333;
+    }
+    .erp-sidebar .logo img {
+      width: 46px;
+      height: 46px;
+      margin-right: 10px;
+    }
+    /* Main Area */
+    .erp-main {
+      flex: 1;
+      background: #ffffff;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+    .erp-topbar {
+      background: #ffffff;
+      border-bottom: 1px solid #ddd;
+      padding: 14px 25px;
+    }
+    .erp-topbar h5 {
+      color: #212529 !important;
+      font-weight: 600;
+    }
+    .erp-content {
+      flex: 1;
+      overflow-y: auto;
+      background-color: #ffffff;
+      padding: 25px;
+    }
+    .erp-link {
+      display: block;
+      color: rgba(255,255,255,0.8);
+      text-decoration: none;
+      padding: 10px 18px;
+      border-radius: 6px;
+      margin: 2px 6px;
+      transition: all 0.3s ease;
+    }
+    .erp-link:hover, .erp-link.active {
+      background-color: #00f5d4;
+      color: #1e1e2d;
+    }
+    .dropdown-btn {
+      background: none;
+      border: none;
+      color: white;
+      padding: 10px 18px;
+      width: 100%;
+      text-align: left;
+      font-weight: 600;
+      border-radius: 6px;
+      transition: 0.3s;
+    }
+    .dropdown-btn:hover {
+      background-color: #00f5d4;
+      color: #1e1e2d;
+    }
+    .dropdown-container {
+      display: none;
+      background: rgba(255,255,255,0.05);
+      padding-left: 12px;
+      border-left: 2px solid #00f5d4;
+    }
+    .dropdown-container.show {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+    .dropdown-container a {
+      display: block;
+      color: rgba(255,255,255,0.8);
+      font-size: 14px;
+      padding: 8px 14px;
+      text-decoration: none;
+      border-radius: 4px;
+    }
+    .dropdown-container a:hover, .dropdown-container a.active {
+      background: #00f5d4;
+      color: #1e1e2d;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Optional dark-mode styles (kept from your original) */
+    body.dark-mode {
+      background-color: #121214;
+      color: #e6eef6;
+    }
+    body.dark-mode .erp-main { background: #0f1724; color: #e6eef6; }
+    body.dark-mode .erp-topbar { background: #0f1724; border-bottom-color: #1f2937; }
+  </style>
+</head>
+
+<body>
+  <div class="erp-wrapper">
+    <!-- SIDEBAR -->
+    <aside id="erpSidebar" class="erp-sidebar">
+      <div class="logo">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="logo" />
+        <div>
+          <div class="fw-bold text-light">Tatwadarsha ERP</div>
+          <small class="text-muted">Institute ERP</small>
+        </div>
+      </div>
+
+      <nav class="flex-grow-1 p-2">
+        <a href="{{ url_for('dashboard.dashboard') }}" class="erp-link">🏠 Dashboard</a>
+
+        <div class="sidebar-dropdown mt-2">
+          <button class="dropdown-btn">🎓 Students <span class="arrow">▸</span></button>
+          <div class="dropdown-container">
+            <a href="{{ url_for('roll_allocation.roll_allocation') }}">Roll No / Enrollment No Allocation</a>
+            <a href="/students/add">Add Student</a>
+            <a href="/students/view">View / Edit Student</a>
+            <a href="{{ url_for('dropout_students_page') }}">Dropout Student</a>
+            <a href="/students/promote">Promote Student</a>
+
+            <!-- ✅ FIXED LINE: points to the actual function name in students.py -->
+            <a href="{{ url_for('students.session_wise_page') }}">Session Wise Student</a>
+
+          </div>
+        </div>
+
+        <a href="/employees" class="erp-link">👩‍🏫 Employees</a>
+        <a href="/fees" class="erp-link">💰 Fees</a>
+
+        <div class="sidebar-dropdown mt-2">
+          <button class="dropdown-btn">⚙️ Master <span class="arrow">▸</span></button>
+          <div class="dropdown-container">
+            <a href="/master/session">Session Master</a>
+            <a href="/master/consultant">Consultant Master</a>
+            <a href="/master/religion">Religion Master</a>
+            <a href="/master/occupation">Occupation Master</a>
+            <a href="/master/caste">Caste Master</a>
+            <a href="/master/category">Category Master</a>
+            <a href="/master/latefee">Late Fee Master</a>
+            <a href="/master/school">School Master</a>
+            <a href="/master/board">Board Master</a>
+            <a href="/master/city">City/District Master</a>
+            <a href="/master/scholarship">Scholarship Master</a>
+            <a href="/master/course">Course Master</a>
+            <a href="/master/branch">Branch Master</a>
+            <a href="/master/batch">Batch Master</a>
+            <a href="/master/subject">Subject Master</a>
+          </div>
+        </div>
+
+        <a href="/attendance" class="erp-link">📅 Attendance</a>
+        <a href="/reports" class="erp-link">📊 Reports</a>
+      </nav>
+
+      <div class="p-3 border-top">
+        <a href="{{ url_for('logout') }}" class="btn btn-outline-danger w-100">🔐 Logout</a>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="erp-main">
+      <header class="erp-topbar d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">{{ title }}</h5>
+        <div class="d-flex align-items-center">
+          <button id="themeToggle" class="btn btn-outline-secondary me-3">🌙</button>
+          <span class="text-muted me-3">Welcome, <b>admin</b> 👋</span>
+          <img src="{{ url_for('static', filename='images/logo.png') }}" width="36" height="36" class="rounded-circle" alt="admin" />
+        </div>
+      </header>
+
+      <section class="erp-content">
+        {% block content %}
+        {% if request.path == '/master' %}
+          <div class="text-center py-5">
+            <h4 class="text-muted">⚙️ Select a Master to manage</h4>
+            <p class="text-secondary">Choose a master category from the sidebar to begin.</p>
+          </div>
+        {% elif request.path == '/students' %}
+          <div class="text-center py-5">
+            <h4 class="text-muted">🎓 Select a Student option</h4>
+            <p class="text-secondary">Choose an action from the Students menu to begin.</p>
+          </div>
+        {% endif %}
+        {% endblock %}
+      </section>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const currentPath = "{{ request.path }}";
+    const themeToggle = document.getElementById('themeToggle');
+    const body = document.body;
+
+    // Highlight Active Sidebar Link
+    document.querySelectorAll('.erp-sidebar a').forEach(link => {
+      try {
+        if (link.getAttribute('href') === currentPath) link.classList.add('active');
+      } catch(e) { /* ignore malformed links */ }
+    });
+
+    // Dropdown Toggle Logic
+    document.querySelectorAll('.sidebar-dropdown').forEach(drop => {
+      const btn = drop.querySelector('.dropdown-btn');
+      const container = drop.querySelector('.dropdown-container');
+      const arrow = btn.querySelector('.arrow');
+      btn.addEventListener('click', () => {
+        container.classList.toggle('show');
+        arrow.style.transform = container.classList.contains('show') ? 'rotate(90deg)' : 'rotate(0deg)';
+      });
+      // If any child link is active, open the dropdown by default
+      if (container.querySelector(`[href="${currentPath}"]`)) {
+        container.classList.add('show');
+        if (arrow) arrow.style.transform = 'rotate(90deg)';
+      }
+    });
+
+    // Theme Toggle (persist)
+    if (localStorage.getItem('erp-theme') === 'dark') {
+      body.classList.add('dark-mode');
+      themeToggle.textContent = '☀️';
+    }
+    themeToggle.addEventListener('click', () => {
+      body.classList.toggle('dark-mode');
+      const isDark = body.classList.contains('dark-mode');
+      themeToggle.textContent = isDark ? '☀️' : '🌙';
+      localStorage.setItem('erp-theme', isDark ? 'dark' : 'light');
+    });
+  </script>
+</body>
+</html>

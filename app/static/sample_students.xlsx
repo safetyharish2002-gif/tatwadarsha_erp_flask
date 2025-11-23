@@ -1,0 +1,76 @@
+import pandas as pd
+import os
+
+def generate_sample_excel():
+    """Creates a sample Excel file with all Add Student fields."""
+    # Define all student columns
+    columns = [
+        # 🧍 PERSONAL DETAILS
+        "name", "dob", "gender", "aadhaar", "blood_group", "email", "phone", "address",
+
+        # 🎓 ACADEMIC DETAILS
+        "session", "course", "branch", "department", "batch", "admission_date",
+        "previous_school", "tenth_board", "tenth_percent", "twelfth_board", "twelfth_percent", "last_exam_passed",
+
+        # 👨‍👩‍👧 FAMILY DETAILS
+        "father_name", "father_occupation", "mother_name", "guardian_contact", "annual_income",
+
+        # 🏦 BANK DETAILS
+        "account_holder", "account_number", "ifsc", "bank_name",
+
+        # 📑 DOCUMENTS
+        "photo_url", "marksheet_url", "aadhaar_url", "tc_url", "migration_url"
+    ]
+
+    # Example data (you can replace or extend this)
+    data = [{
+        "name": "John Doe",
+        "dob": "2002-05-15",
+        "gender": "Male",
+        "aadhaar": "123456789012",
+        "blood_group": "O+",
+        "email": "john.doe@example.com",
+        "phone": "9876543210",
+        "address": "123 Main Street, City",
+
+        "session": "2024-25",
+        "course": "B.Sc Nursing",
+        "branch": "Nursing",
+        "department": "Health Science",
+        "batch": "Batch A",
+        "admission_date": "2024-08-01",
+        "previous_school": "City Higher Secondary School",
+        "tenth_board": "CBSE",
+        "tenth_percent": "85.6",
+        "twelfth_board": "CBSE",
+        "twelfth_percent": "88.4",
+        "last_exam_passed": "12th Science",
+
+        "father_name": "Mr. Rajesh Doe",
+        "father_occupation": "Engineer",
+        "mother_name": "Mrs. Sunita Doe",
+        "guardian_contact": "9876543210",
+        "annual_income": "500000",
+
+        "account_holder": "John Doe",
+        "account_number": "123456789012",
+        "ifsc": "SBIN0001234",
+        "bank_name": "State Bank of India",
+
+        "photo_url": "https://example.com/photo.jpg",
+        "marksheet_url": "https://example.com/marksheet.pdf",
+        "aadhaar_url": "https://example.com/aadhaar.pdf",
+        "tc_url": "https://example.com/tc.pdf",
+        "migration_url": "https://example.com/migration.pdf"
+    }]
+
+    # Create DataFrame
+    df = pd.DataFrame(data, columns=columns)
+
+    # Save to app/static/
+    output_path = os.path.join(os.path.dirname(__file__), "../static/sample_students.xlsx")
+    df.to_excel(output_path, index=False)
+    print(f"✅ Sample Excel generated at: {output_path}")
+
+if __name__ == "__main__":
+    generate_sample_excel()

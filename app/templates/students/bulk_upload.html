@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Bulk Upload Students | Tatwadarsha ERP{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="fw-bold text-dark">📥 Bulk Upload Students</h4>
+    <div>
+      <a href="{{ url_for('students.download_sample') }}" class="btn btn-outline-primary me-2">
+        ⬇️ Download Sample Template
+      </a>
+      <a href="{{ url_for('students.students_home') }}" class="btn btn-outline-secondary">
+        ← Back to Add Student
+      </a>
+    </div>
+  </div>
+
+  <div class="card p-4 shadow-sm glassy-form">
+    <div class="mb-3">
+      <p class="text-muted mb-1">
+        Upload an Excel (.xlsx) or CSV (.csv) file containing student records.
+      </p>
+
+      <strong>Required Columns (MySQL):</strong>
+      <div class="mt-1">
+        <code>name, dob, gender, religion, caste, category, aadhaar, blood_group, email, phone, address,</code><br>
+        <code>session, course, branch, department, batch, register_number, admission_date, previous_school,</code><br>
+        <code>tenth_board, tenth_percent, twelfth_board, twelfth_percent, last_exam_passed,</code><br>
+        <code>father_name, father_occupation, father_mobile, mother_name, mother_occupation, mother_mobile,</code><br>
+        <code>guardian_name, guardian_mobile, guardian_email, annual_income,</code><br>
+        <code>account_holder, account_number, ifsc, bank_name,</code><br>
+        <code>photo_url, marksheet_url, aadhaar_url, tc_url, migration_url</code>
+      </div>
+
+      <small class="text-secondary">Tip: Use the sample template to avoid formatting errors.</small>
+    </div>
+
+    <form action="{{ url_for('students.bulk_upload_students') }}"
+          method="POST" enctype="multipart/form-data" id="bulkUploadForm">
+      <div class="row g-3 align-items-center">
+        <div class="col-md-8">
+          <input class="form-control" type="file" id="fileInput" name="file" accept=".xlsx,.csv" required>
+        </div>
+        <div class="col-md-4 text-end">
+          <button type="submit" class="btn btn-success px-4" id="uploadBtn">⬆️ Upload</button>
+        </div>
+      </div>
+    </form>
+
+    <!-- Flash Messages -->
+    <div class="mt-3">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category in ['error','danger'] else category }} alert-dismissible fade show" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+    </div>
+
+    <!-- File Preview -->
+    <div id="previewWrap" class="mt-3" style="display:none;">
+      <h6 class="mb-2">File preview (first 5 rows)</h6>
+      <div id="previewTable" class="table-responsive"></div>
+    </div>
+  </div>
+
+  <!-- Info Card -->
+  <div class="mt-4">
+    <div class="card p-3 shadow-sm">
+      <h6 class="mb-2">How it works</h6>
+      <ol class="mb-0">
+        <li>Download the sample template.</li>
+        <li>Fill student details according to the MySQL columns listed above.</li>
+        <li>Upload the Excel/CSV file.</li>
+        <li>Server validates and inserts into <code>students</code> MySQL table.</li>
+        <li>Check "View Students" to confirm uploaded records.</li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<style>
+.glassy-form {
+  background: rgba(255,255,255,0.75);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  border: 1px solid rgba(0,245,212,0.08);
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const fileInput = document.getElementById('fileInput');
+  const uploadBtn = document.getElementById('uploadBtn');
+  const previewWrap = document.getElementById('previewWrap');
+  const previewTable = document.getElementById('previewTable');
+
+  // Validation
+  document.getElementById('bulkUploadForm').addEventListener('submit', (e) => {
+    const f = fileInput.files[0];
+    if (!f) {
+      e.preventDefault();
+      alert('Please select a file to upload.');
+      return;
+    }
+    const allowed = ['.xlsx', '.csv'];
+    const name = f.name.toLowerCase();
+    if (!allowed.some(ext => name.endsWith(ext))) {
+      e.preventDefault();
+      alert('Invalid file type. Please upload .xlsx or .csv');
+      return;
+    }
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Uploading...';
+  });
+
+  // CSV preview
+  fileInput.addEventListener('change', (evt) => {
+    previewTable.innerHTML = '';
+    previewWrap.style.display = 'none';
+    const f = evt.target.files[0];
+    if (!f) return;
+
+    if (f.name.toLowerCase().endsWith('.csv')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target.result;
+        const rows = text.split(/\r?\n/).filter(r => r.trim()).slice(0,6);
+
+        if (rows.length) {
+          const cols = rows[0].split(',');
+          let html = '<table class="table table-sm"><thead><tr>';
+          cols.forEach(c => html += `<th>${c.trim()}</th>`);
+          html += '</tr></thead><tbody>';
+
+          rows.slice(1).forEach(r => {
+            html += '<tr>';
+            r.split(',').forEach(cell => html += `<td>${cell.trim()}</td>`);
+            html += '</tr>';
+          });
+
+          html += '</tbody></table>';
+          previewTable.innerHTML = html;
+          previewWrap.style.display = 'block';
+        }
+      };
+      reader.readAsText(f);
+    } else {
+      previewTable.innerHTML = `<div class="alert alert-info p-2">XLSX file selected: ${f.name} (preview not available)</div>`;
+      previewWrap.style.display = 'block';
+    }
+  });
+});
+</script>
+
+{% endblock %}
