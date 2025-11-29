@@ -1,0 +1,764 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container-fluid">
+  <h4 class="fw-bold mb-3">💸 Fees Assign</h4>
+
+  <!-- Filter card -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-2">
+          <label class="form-label">Session</label>
+          <select id="filter-session" class="form-select"><option value="">All Sessions</option></select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Course</label>
+          <select id="filter-course" class="form-select"><option value="">All Courses</option></select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Branch</label>
+          <select id="filter-branch" class="form-select"><option value="">All Branches</option></select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Department</label>
+          <select id="filter-department" class="form-select"><option value="">All Departments</option></select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Batch</label>
+          <select id="filter-batch" class="form-select"><option value="">All Batches</option></select>
+        </div>
+
+        <!-- removed Load Students button - auto-loading will handle it -->
+        <div class="col-12">
+          <label class="form-label">Search students (name / register / phone)</label>
+          <input id="studentSearch" class="form-control" placeholder="Type to search students...">
+          <div id="autosuggestList" class="list-group position-absolute" style="z-index:2000;display:none;max-height:240px;overflow:auto;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <!-- Students table -->
+    <div class="col-lg-8">
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">Students <small id="studentsCount" class="text-muted">0 loaded</small></h6>
+            <div>
+              <button id="selectAllBtn" class="btn btn-sm btn-outline-secondary">Select All</button>
+            </div>
+          </div>
+
+          <div class="table-responsive" style="max-height:520px;overflow:auto;">
+            <table class="table table-sm table-hover" id="studentsTable">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:30px"></th>
+                  <th>Name</th>
+                  <th>Course / Batch</th>
+                  <th>Register / Phone</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- NEW: Assignments Preview table -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <h6 class="mb-0">Assignments Preview</h6>
+          </div>
+          <small class="text-muted">Select students and fee heads to see rows here. Edit amount per student & head; this amount will be saved.</small>
+          <div class="table-responsive mt-2" style="max-height:420px;overflow:auto;">
+            <table class="table table-sm table-bordered" id="assignPreviewTable">
+              <thead class="table-light">
+                <tr>
+                  <th>Name</th>
+                  <th>Course / Batch</th>
+                  <th>Register / Phone</th>
+                  <th>Fee Head</th>
+                  <th style="width:120px;">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="5" class="text-muted">No rows. Select students and fee heads.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <!-- END: Assignments Preview -->
+    </div>
+
+    <!-- Fee Heads & Assign -->
+    <div class="col-lg-4">
+      <div class="card shadow-sm mb-3">
+        <div class="card-body">
+          <h6>Fee Heads</h6>
+
+          <!-- Multi-select dropdown with checkboxes -->
+          <div class="mb-2">
+            <div class="dropdown">
+              <button class="btn btn-outline-primary dropdown-toggle w-100 text-start" type="button" id="feeHeadsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                Select Fee Heads
+              </button>
+              <div class="dropdown-menu p-3" style="min-width:300px; max-height:360px; overflow:auto;" aria-labelledby="feeHeadsDropdown" id="feeHeadsList">
+                <div id="feeHeadsLoading" class="text-muted small">Loading fee heads...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Selected heads override area -->
+          <div id="selectedOverrides" class="mb-3">
+            <small class="text-muted">Selected heads (click Remove to unselect; edit overrides below)</small>
+            <div id="noSelected" class="mt-2 text-muted">No head selected</div>
+            <div id="overrideList" class="mt-2"></div>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label">Selected Head (quick)</label>
+            <input id="selectedHeadQuick" class="form-control" readonly placeholder="No head selected">
+          </div>
+
+          <div class="d-grid gap-2">
+            <button id="bulkAssignBtn" class="btn btn-success">Assign to Selected Students (Bulk)</button>
+            <button id="singleAssignBtn" class="btn btn-primary">Assign to Single Student (Open Picker)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick preview / actions -->
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6>Quick Preview / Actions</h6>
+          <div id="quickPreview" class="small text-muted">No selection yet</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Single student picker modal -->
+<div class="modal fade" id="singlePickerModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Pick Student</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input id="pickerSearch" class="form-control mb-2" placeholder="Search students...">
+        <div class="table-responsive" style="max-height:400px;overflow:auto;">
+          <table class="table table-sm">
+            <thead class="table-light"><tr><th>Name</th><th>Course/Batch</th><th>Register/Phone</th><th></th></tr></thead>
+            <tbody id="pickerList"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal">Close</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- Toasts -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:3000">
+  <div id="toastContainer"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ============================
+   Helpers
+   ============================ */
+function showToast(message, type="success", title="") {
+  const id = "t" + Date.now();
+  const cont = document.getElementById("toastContainer");
+  const toastHtml = `
+    <div id="${id}" class="toast align-items-center text-bg-${type} border-0 mb-2" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="3000">
+      <div class="d-flex">
+        <div class="toast-body">${title ? "<strong>"+title+":</strong> " : ""}${message}</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>`;
+  cont.insertAdjacentHTML('beforeend', toastHtml);
+  const el = document.getElementById(id);
+  new bootstrap.Toast(el).show();
+  setTimeout(()=> el.remove(), 4200);
+}
+
+function dateSafe(v){ return v ? v.split("T")[0] : ""; }
+function fmtDateForDisplay(v){ if(!v) return ""; try{ return new Date(v).toLocaleDateString(); }catch(e){ return v; } }
+
+/* ============================
+   DOM refs & state
+   ============================ */
+const studentsTbody = document.querySelector("#studentsTable tbody");
+const studentsCount = document.getElementById("studentsCount");
+const selectAllBtn = document.getElementById("selectAllBtn");
+
+const assignPreviewTbody = document.querySelector("#assignPreviewTable tbody");
+
+const filterSession = document.getElementById("filter-session");
+const filterCourse = document.getElementById("filter-course");
+const filterBranch = document.getElementById("filter-branch");
+const filterDepartment = document.getElementById("filter-department");
+const filterBatch = document.getElementById("filter-batch");
+
+const studentSearch = document.getElementById("studentSearch");
+const autosuggestList = document.getElementById("autosuggestList");
+
+const feeHeadsList = document.getElementById("feeHeadsList");
+const feeHeadsLoading = document.getElementById("feeHeadsLoading");
+const selectedHeadQuick = document.getElementById("selectedHeadQuick");
+const noSelected = document.getElementById("noSelected");
+const overrideList = document.getElementById("overrideList");
+const quickPreview = document.getElementById("quickPreview");
+
+const bulkAssignBtn = document.getElementById("bulkAssignBtn");
+const singleAssignBtn = document.getElementById("singleAssignBtn");
+
+/* in-memory */
+let students = [];
+let feeHeads = [];
+let selectedHeadIds = new Set();
+let headOverrides = {}; // { headId: { amount, start_date, end_date, due_date } }
+let assignRows = {};    // { "studentId_headId": { key, studentId, headId, amount, student, head } }
+
+/* ============================
+   Load master dropdowns
+   ============================ */
+async function loadMasterOptions(name, selectElem, placeholder="All") {
+  selectElem.innerHTML = `<option value="">${placeholder}</option>`;
+  try {
+    const res = await fetch(`/master/${name}/items`);
+    const j = await res.json();
+    if(j.success && Array.isArray(j.items)){
+      j.items.forEach(it => {
+        const opt = document.createElement("option");
+        opt.value = it.id;
+        opt.textContent = it.name;
+        selectElem.appendChild(opt);
+      });
+    }
+  } catch(e){
+    console.error("Failed load master:", name, e);
+  }
+}
+
+/* ============================
+   Load fee heads
+   ============================ */
+async function loadFeeHeads() {
+  feeHeadsLoading.style.display = "";
+  feeHeadsList.querySelectorAll('.fee-item-row')?.forEach(n=>n.remove());
+  try {
+    const res = await fetch('/fees/api/heads');
+    const j = await res.json();
+    feeHeads = j.success ? j.items : [];
+    feeHeadsLoading.style.display = "none";
+
+    if(!feeHeads.length){
+      feeHeadsList.innerHTML = '<div class="text-muted small">No fee heads found.</div>';
+      return;
+    }
+
+    feeHeadsList.innerHTML = "";
+    feeHeads.forEach(h=>{
+      const row = document.createElement("div");
+      row.className = "fee-item-row mb-2";
+      row.innerHTML = `
+        <div class="form-check">
+          <input class="form-check-input fee-head-checkbox" type="checkbox" value="${h.id}" id="fh_${h.id}">
+          <label class="form-check-label" for="fh_${h.id}">
+            <strong>${h.name}</strong><br>
+            <small class="text-muted">Default: ${Number(h.amount).toFixed(2)} · Start ${dateSafe(h.start_date)||'-'} · End ${dateSafe(h.end_date)||'-'} · Due ${dateSafe(h.due_date)||'-'}</small>
+          </label>
+        </div>`;
+      feeHeadsList.appendChild(row);
+
+      // checkbox behavior
+      row.querySelector('.fee-head-checkbox').addEventListener('change', (ev)=>{
+        const id = ev.target.value;
+        if(ev.target.checked){
+          selectedHeadIds.add(id);
+          const head = feeHeads.find(x=>String(x.id)===String(id)) || {};
+          headOverrides[id] = {
+            amount: head.amount || '',
+            start_date: dateSafe(head.start_date),
+            end_date: dateSafe(head.end_date),
+            due_date: dateSafe(head.due_date)
+          };
+        } else {
+          selectedHeadIds.delete(id);
+          delete headOverrides[id];
+        }
+        refreshSelectedOverrides();
+        rebuildAssignRows();
+      });
+
+      // clicking label sets quick input
+      row.querySelector('label').addEventListener('click', ()=>{
+        selectedHeadQuick.value = h.name;
+      });
+    });
+
+  } catch(e){
+    console.error("Load fee heads error", e);
+    feeHeadsLoading.style.display = "none";
+    feeHeadsList.innerHTML = '<div class="text-danger small">Failed to load fee heads.</div>';
+  }
+}
+
+/* refresh override UI */
+function refreshSelectedOverrides(){
+  overrideList.innerHTML = "";
+  if(selectedHeadIds.size === 0){
+    noSelected.style.display = "";
+    selectedHeadQuick.value = "";
+    quickPreview.innerText = "No selected fee heads";
+    return;
+  }
+  noSelected.style.display = "none";
+
+  Array.from(selectedHeadIds).forEach(id=>{
+    const head = feeHeads.find(x=>String(x.id)===String(id)) || {name:'Unknown', amount:0};
+    const ov = headOverrides[id] || {};
+    const el = document.createElement("div");
+    el.className = "card p-2 mb-2";
+    el.style.borderLeft = "4px solid #0d6efd";
+    el.innerHTML = `
+      <div class="d-flex justify-content-between align-items-center">
+        <div><strong>${head.name}</strong> <small class="text-muted">(${Number(head.amount).toFixed(2)})</small></div>
+        <div><button class="btn btn-sm btn-outline-danger remove-head" data-id="${id}">Remove</button></div>
+      </div>
+      <div class="row mt-2 g-2">
+        <div class="col-6"><label class="form-label small">Amount</label><input type="number" class="form-control form-control-sm ov-amount" value="${ov.amount||''}"></div>
+        <div class="col-6"><label class="form-label small">Due Date</label><input type="date" class="form-control form-control-sm ov-due" value="${ov.due_date||''}"></div>
+        <div class="col-6"><label class="form-label small">Start Date</label><input type="date" class="form-control form-control-sm ov-start" value="${ov.start_date||''}"></div>
+        <div class="col-6"><label class="form-label small">End Date</label><input type="date" class="form-control form-control-sm ov-end" value="${ov.end_date||''}"></div>
+      </div>
+    `;
+    overrideList.appendChild(el);
+
+    el.querySelector(".remove-head").addEventListener("click", ()=>{
+      selectedHeadIds.delete(id);
+      delete headOverrides[id];
+      const cb = document.querySelector(`#fh_${id}`);
+      if(cb) cb.checked = false;
+      refreshSelectedOverrides();
+      rebuildAssignRows();
+    });
+
+    el.querySelector(".ov-amount").addEventListener("input", (e)=> {
+      if(!headOverrides[id]) headOverrides[id] = {};
+      headOverrides[id].amount = e.target.value;
+      updatePreviewText();
+      rebuildAssignRows(); // new default for new rows
+    });
+    el.querySelector(".ov-due").addEventListener("input", (e)=> {
+      if(!headOverrides[id]) headOverrides[id] = {};
+      headOverrides[id].due_date = e.target.value;
+      updatePreviewText();
+    });
+    el.querySelector(".ov-start").addEventListener("input", (e)=> {
+      if(!headOverrides[id]) headOverrides[id] = {};
+      headOverrides[id].start_date = e.target.value;
+      updatePreviewText();
+    });
+    el.querySelector(".ov-end").addEventListener("input", (e)=> {
+      if(!headOverrides[id]) headOverrides[id] = {};
+      headOverrides[id].end_date = e.target.value;
+      updatePreviewText();
+    });
+  });
+
+  updatePreviewText();
+}
+
+function updatePreviewText(){
+  const lines = Array.from(selectedHeadIds).map(id=>{
+    const head = feeHeads.find(x=>String(x.id)===String(id)) || {};
+    const ov = headOverrides[id] || {};
+    return `${head.name || id} → ${ov.amount || head.amount} (due ${ov.due_date || dateSafe(head.due_date)|| "-"})`;
+  });
+  quickPreview.innerText = lines.length ? lines.join("\n") : "No selected heads";
+}
+
+/* ============================
+   Assign preview table (new)
+   ============================ */
+function rebuildAssignRows(){
+  if(!assignPreviewTbody) return;
+  const selectedStudentIds = getSelectedStudentIds().map(String);
+  const newRows = {};
+
+  selectedStudentIds.forEach(sid=>{
+    const st = students.find(s => String(s.id) === sid);
+    if(!st) return;
+
+    Array.from(selectedHeadIds).forEach(hid=>{
+      const head = feeHeads.find(h => String(h.id) === String(hid));
+      if(!head) return;
+
+      const key = sid + "_" + hid;
+      const prev = assignRows[key];
+      let amount = prev ? prev.amount : "";
+
+      if(amount === undefined || amount === null || amount === ""){
+        const ov = headOverrides[hid] || {};
+        amount = ov.amount || head.amount || "";
+      }
+
+      newRows[key] = {
+        key,
+        studentId: sid,
+        headId: hid,
+        amount,
+        student: st,
+        head: head
+      };
+    });
+  });
+
+  assignRows = newRows;
+  renderAssignPreviewTable();
+}
+
+function renderAssignPreviewTable(){
+  if(!assignPreviewTbody) return;
+  assignPreviewTbody.innerHTML = "";
+
+  const rows = Object.values(assignRows);
+  if(!rows.length){
+    assignPreviewTbody.innerHTML = '<tr><td colspan="5" class="text-muted">No rows. Select students and fee heads.</td></tr>';
+    return;
+  }
+
+  rows.forEach(r=>{
+    const st = r.student || {};
+    const head = r.head || {};
+    const tr = document.createElement("tr");
+    tr.dataset.key = r.key;
+    tr.innerHTML = `
+      <td>${(st.personal && st.personal.name) || '-'}</td>
+      <td>${(st.academic && st.academic.course) || ''} / ${(st.academic && st.academic.batch) || ''}</td>
+      <td>${(st.academic && st.academic.register_number) || (st.personal && st.personal.phone) || ''}</td>
+      <td>${head.name || ''}</td>
+      <td><input type="number" class="form-control form-control-sm assign-amount" value="${r.amount ?? ''}"></td>
+    `;
+    assignPreviewTbody.appendChild(tr);
+  });
+
+  assignPreviewTbody.querySelectorAll(".assign-amount").forEach(inp=>{
+    const tr = inp.closest("tr");
+    const key = tr.dataset.key;
+    inp.addEventListener("input", (e)=>{
+      if(assignRows[key]) assignRows[key].amount = e.target.value;
+    });
+  });
+}
+
+/* ============================
+   Load students (auto)
+   Endpoint: /api/get_students?search=...
+   Auto-called on init + on filter change + on search (debounced)
+   ============================ */
+async function loadStudents(){
+  const q = new URLSearchParams();
+  // We pass textual names to /api/get_students as it expects course/year/semester/section mapping.
+  if(filterCourse.value) q.set('course', filterCourse.options[filterCourse.selectedIndex].text);
+  if(filterBatch.value) q.set('year', filterBatch.options[filterBatch.selectedIndex].text);
+  const sterm = studentSearch.value?.trim();
+  if(sterm) q.set('search', sterm);
+
+  try {
+    const res = await fetch('/api/get_students?' + q.toString());
+    const j = await res.json();
+    if(!j.success){
+      showToast("Failed to load students", "danger");
+      return;
+    }
+    students = j.students || [];
+    renderStudents();
+  } catch(e){
+    console.error("Load students error", e);
+    showToast("Error loading students", "danger");
+  }
+}
+
+function renderStudents(){
+  studentsTbody.innerHTML = "";
+  students.forEach(st=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><input type="checkbox" class="student-chk" value="${st.id}"></td>
+      <td>${(st.personal && st.personal.name) || '-'}</td>
+      <td>${(st.academic && st.academic.course) || ''} / ${(st.academic && st.academic.batch) || ''}</td>
+      <td>${(st.personal && st.personal.phone) || (st.academic && st.academic.register_number) || ''}</td>
+    `;
+    studentsTbody.appendChild(tr);
+  });
+  studentsCount.innerText = `${students.length} loaded`;
+  updateSelectedAllUI();
+  rebuildAssignRows();
+}
+
+/* select all toggle */
+selectAllBtn.addEventListener('click', ()=>{
+  const chks = document.querySelectorAll('#studentsTable tbody .student-chk');
+  const toCheck = Array.from(chks).some(c=>!c.checked);
+  chks.forEach(c=> c.checked = toCheck);
+  selectAllBtn.textContent = toCheck ? "Unselect All" : "Select All";
+  rebuildAssignRows();
+});
+
+function getSelectedStudentIds(){
+  return Array.from(document.querySelectorAll('#studentsTable tbody .student-chk'))
+    .filter(c => c.checked)
+    .map(c => c.value);
+}
+
+function updateSelectedAllUI(){
+  const chks = document.querySelectorAll('#studentsTable tbody .student-chk');
+  selectAllBtn.textContent = Array.from(chks).every(c=>c.checked) && chks.length ? "Unselect All" : "Select All";
+}
+
+/* ============================
+   Autosuggest (debounced)
+   ============================ */
+let autoTimer = null;
+studentSearch.addEventListener('input', (e)=>{
+  const term = e.target.value.trim();
+  // call loadStudents automatically (debounced) to auto-filter table
+  if(autoTimer) clearTimeout(autoTimer);
+  autoTimer = setTimeout(()=> {
+    if(term.length >= 0) loadStudents();
+    // also fetch smaller autosuggest list
+    if(term.length){
+      fetchAutosuggest(term);
+    } else {
+      autosuggestList.style.display = 'none';
+    }
+  }, 300);
+});
+
+async function fetchAutosuggest(term){
+  try {
+    const res = await fetch(`/api/get_students?search=${encodeURIComponent(term)}`);
+    const j = await res.json();
+    if(!j.success){ autosuggestList.style.display='none'; return; }
+    const list = j.students || [];
+    autosuggestList.innerHTML = "";
+    if(!list.length){ autosuggestList.style.display='none'; return; }
+    list.slice(0,12).forEach(s=>{
+      const name = (s.personal && s.personal.name) || '';
+      const reg = (s.academic && s.academic.register_number) || '';
+      const phone = (s.personal && s.personal.phone) || '';
+      const item = document.createElement('a');
+      item.href = "#";
+      item.className = "list-group-item list-group-item-action";
+      item.innerHTML = `<strong>${name}</strong><div class="small text-muted">${reg} • ${phone}</div>`;
+      item.addEventListener('click', (ev)=>{
+        ev.preventDefault();
+        studentSearch.value = name + (reg ? ' / '+reg : '');
+        autosuggestList.style.display='none';
+        // try to find and check student in table
+        const found = Array.from(document.querySelectorAll('#studentsTable tbody tr')).find(tr=> tr.textContent.toLowerCase().includes(name.toLowerCase()) );
+        if(found){
+          const chk = found.querySelector('.student-chk');
+          if(chk) chk.checked = true;
+          updateSelectedAllUI();
+          rebuildAssignRows();
+        } else {
+          // open picker if not in loaded
+          new bootstrap.Modal(document.getElementById('singlePickerModal')).show();
+          loadPicker(term);
+        }
+      });
+      autosuggestList.appendChild(item);
+    });
+    autosuggestList.style.display = "";
+  } catch(e){ console.error(e); autosuggestList.style.display='none'; }
+}
+
+/* hide autosuggest on click outside */
+document.addEventListener('click', (ev)=>{
+  if(!autosuggestList.contains(ev.target) && ev.target !== studentSearch) autosuggestList.style.display='none';
+});
+
+/* ============================
+   Picker modal
+   ============================ */
+async function loadPicker(searchTerm=""){
+  try {
+    document.getElementById('pickerList').innerHTML = '<tr><td colspan="4" class="text-muted">Loading...</td></tr>';
+    const res = await fetch(`/api/get_students?search=${encodeURIComponent(searchTerm)}`);
+    const j = await res.json();
+    if(!j.success){ document.getElementById('pickerList').innerHTML = '<tr><td colspan="4">Failed</td></tr>'; return; }
+    const list = j.students || [];
+    const tb = document.getElementById('pickerList');
+    tb.innerHTML = "";
+    list.forEach(s=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${(s.personal && s.personal.name) || ''}</td><td>${(s.academic && s.academic.course) || ''} / ${(s.academic && s.academic.batch) || ''}</td>
+                      <td>${(s.personal && s.personal.phone) || (s.academic && s.academic.register_number) || ''}</td>
+                      <td><button class="btn btn-sm btn-primary pick-student" data-id="${s.id}">Pick</button></td>`;
+      tb.appendChild(tr);
+    });
+    tb.querySelectorAll('.pick-student').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        const sid = b.dataset.id;
+        assignSingleStudentById(sid);
+        bootstrap.Modal.getInstance(document.getElementById('singlePickerModal')).hide();
+      });
+    });
+  } catch(e){ console.error(e); document.getElementById('pickerList').innerHTML = '<tr><td colspan="4">Error</td></tr>'; }
+}
+document.getElementById('pickerSearch').addEventListener('input',(e)=>{ loadPicker(e.target.value); });
+singleAssignBtn.addEventListener('click', ()=> {
+  new bootstrap.Modal(document.getElementById('singlePickerModal')).show();
+  loadPicker('');
+});
+
+/* ============================
+   Assign logic
+   - Bulk assign: will send one POST per row (student+head)
+   - Single assign: keeps existing behavior (using overrides)
+   ============================ */
+bulkAssignBtn.addEventListener('click', async ()=>{
+  const rows = Object.values(assignRows);
+  if(!rows.length){
+    showToast("Select at least one student and one fee head", "danger");
+    return;
+  }
+
+  bulkAssignBtn.disabled = true;
+  let successCount = 0, failCount = 0, errors = [];
+
+  for(const row of rows){
+    const ov = headOverrides[row.headId] || {};
+    const amountNum = Number(row.amount || 0);
+    if(!row.amount || isNaN(amountNum) || amountNum <= 0){
+      failCount++;
+      errors.push(`Amount missing/invalid for ${ (row.student.personal && row.student.personal.name) || row.studentId } / ${row.head.name}`);
+      continue;
+    }
+
+    const form = new URLSearchParams();
+    form.append('action','assign_single');  // reuse single-assign route
+    form.append('student_id', row.studentId);
+    form.append('head_id', row.headId);
+    form.append('amount', row.amount);
+    form.append('due_date', ov.due_date || '');
+
+    try {
+      const res = await fetch('/fees/assign/save', {
+        method: 'POST',
+        headers: { 'Accept':'application/json' },
+        body: form
+      });
+      const j = await res.json();
+      if(j.success) {
+        successCount++;
+      } else {
+        failCount++;
+        errors.push(j.message || `Head ${row.headId} failed`);
+      }
+    } catch(e){
+      failCount++;
+      errors.push(e.message || 'Network error');
+    }
+  }
+
+  bulkAssignBtn.disabled = false;
+
+  if(successCount && !failCount){
+    showToast(`Assigned ${successCount} fee entries successfully`, "success");
+  } else if(successCount && failCount){
+    showToast(`Partial success: ${successCount} succeeded, ${failCount} failed`, "warning");
+    console.warn("Assign errors:", errors);
+  } else {
+    showToast(`Assign failed: ${errors.join('; ')}`, "danger");
+  }
+});
+
+async function assignSingleStudentById(studentId){
+  if(!selectedHeadIds.size){ showToast("Select fee head(s) first", "danger"); return; }
+  let anyFail = false;
+  for(const headId of Array.from(selectedHeadIds)){
+    const ov = headOverrides[headId] || {};
+    const form = new URLSearchParams();
+    form.append('action','assign_single');
+    form.append('student_id', studentId);
+    form.append('head_id', headId);
+    form.append('amount', ov.amount || '');
+    form.append('due_date', ov.due_date || '');
+    try {
+      const res = await fetch('/fees/assign/save', { method:'POST', headers:{'Accept':'application/json'}, body: form });
+      const j = await res.json();
+      if(!j.success){
+        anyFail = true;
+        showToast(j.message || "Failed to assign", "danger");
+        break;
+      }
+    } catch(e){
+      anyFail = true;
+      showToast("Error assigning", "danger");
+      break;
+    }
+  }
+  if(!anyFail) showToast("Assigned to student successfully", "success");
+}
+
+/* ============================
+   Initialization
+   ============================ */
+async function initPage(){
+  await Promise.all([
+    loadMasterOptions('session', filterSession, 'All Sessions'),
+    loadMasterOptions('course', filterCourse, 'All Courses'),
+    loadMasterOptions('branch', filterBranch, 'All Branches'),
+    loadMasterOptions('department', filterDepartment, 'All Departments'),
+    loadMasterOptions('batch', filterBatch, 'All Batches'),
+  ]);
+
+  await loadFeeHeads();
+
+  // Auto-load students initially
+  await loadStudents();
+
+  // re-load students whenever filter values change
+  [filterSession, filterCourse, filterBranch, filterDepartment, filterBatch].forEach(sel=>{
+    sel.addEventListener('change', ()=> loadStudents());
+  });
+
+  // student table interactions
+  studentsTbody.addEventListener('change', (e)=> {
+    if(e.target.classList.contains('student-chk')){
+      updateSelectedAllUI();
+      rebuildAssignRows();
+    }
+  });
+
+  studentsTbody.addEventListener('click', (e)=>{
+    const tr = e.target.closest('tr');
+    if(!tr) return;
+    const chk = tr.querySelector('.student-chk');
+    if(chk && e.target.tagName !== 'INPUT') {
+      chk.checked = !chk.checked;
+      updateSelectedAllUI();
+      rebuildAssignRows();
+    }
+  });
+
+  // picker modal shown event preloads
+  document.getElementById('singlePickerModal').addEventListener('shown.bs.modal', ()=> loadPicker(''));
+}
+
+initPage();
+</script>
+{% endblock %}

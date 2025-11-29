@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+{% block title %}Add / Scan Exam Papers{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+  <!-- Page header -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="fw-bold mb-0">📄 Add / Scan Exam Papers</h4>
+    <small class="text-muted">Select a student → then upload / scan exam papers</small>
+  </div>
+
+  <!-- 1. Search Student -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <h6 class="fw-bold mb-2">1️⃣ Search Student</h6>
+      <div class="row g-2 align-items-center">
+        <div class="col-md-6">
+          <input id="studentSearch" type="text" class="form-control"
+                 placeholder="Search by Name / Register No / Roll No">
+        </div>
+        <div class="col-md-3">
+          <button id="btnSearchStudent" class="btn btn-primary w-100">Search</button>
+        </div>
+      </div>
+
+      <div id="searchResults" class="mt-3" style="display:none;">
+        <h6 class="text-muted mb-2">Search Results</h6>
+        <div class="list-group" id="searchResultsList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Selected Student Details + Upload / Scan -->
+  <div id="studentSection" style="display:none;">
+
+    <!-- Student mini-card -->
+    <div class="card shadow-sm mb-3 border-success">
+      <div class="card-header bg-success text-white py-2">
+        <strong>2️⃣ Selected Student</strong>
+      </div>
+      <div class="card-body">
+        <input type="hidden" id="studentIdHidden">
+
+        <div class="row">
+          <div class="col-md-6">
+            <p class="mb-1"><strong>Name:</strong> <span id="s_name"></span></p>
+            <p class="mb-1"><strong>Roll No:</strong> <span id="s_roll"></span></p>
+            <p class="mb-1"><strong>Register No:</strong> <span id="s_reg"></span></p>
+          </div>
+          <div class="col-md-6">
+            <p class="mb-1"><strong>Course:</strong> <span id="s_course"></span></p>
+            <p class="mb-1"><strong>Batch:</strong> <span id="s_batch"></span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload / Scan form -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">3️⃣ Upload / Scan Exam Paper</h6>
+
+        <form id="examPaperForm" enctype="multipart/form-data">
+
+
+          <!-- attach selected student -->
+          <input type="hidden" name="student_id" id="form_student_id">
+
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Subject</label>
+              <input type="text" class="form-control" name="subject_name" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Exam Name</label>
+              <input type="text" class="form-control" name="exam_name" placeholder="Internal / Final / Unit Test" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Year</label>
+              <input type="text" class="form-control" name="year" placeholder="2024-25" required>
+            </div>
+          </div>
+
+          <hr>
+
+          <div class="row g-3 align-items-center">
+            <div class="col-md-6">
+              <label class="form-label">Upload Scanned File</label>
+              <input type="file" class="form-control" name="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" required>
+              <small class="text-muted">
+                First scan using <strong>Brother ADS-3100</strong> software → save file → choose it here.
+              </small>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label d-block">OR</label>
+              <button type="button" id="btnScanNow" class="btn btn-outline-secondary w-100">
+                🖨️ Scan Now
+              </button>
+              <small class="text-muted d-block mt-1">
+                (Later: this button will directly trigger scanner)
+              </small>
+            </div>
+            <div class="col-md-3 d-grid">
+              <label class="form-label d-block">&nbsp;</label>
+              <button type="submit" class="btn btn-success">
+                💾 Save Exam Paper
+              </button>
+            </div>
+          </div>
+
+        </form>
+      </div>
+    </div>
+
+    <!-- 4. Existing papers for this student -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header bg-light">
+        <strong>4️⃣ Existing Exam Papers for this Student</strong>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table mb-0 table-sm table-striped" id="studentPapersTable">
+            <thead class="table-light">
+              <tr>
+                <th>#</th>
+                <th>Subject</th>
+                <th>Exam</th>
+                <th>Year</th>
+                <th>Uploaded At</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- will be filled by JS -->
+            </tbody>
+          </table>
+        </div>
+        <div id="noPapersNote" class="p-3 text-muted" style="display:none;">
+          No exam papers uploaded yet for this student.
+        </div>
+      </div>
+    </div>
+
+  </div> <!-- /studentSection -->
+
+</div> <!-- /container -->
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const searchInput      = document.getElementById('studentSearch');
+  const searchBtn        = document.getElementById('btnSearchStudent');
+  const resultsBox       = document.getElementById('searchResults');
+  const resultsList      = document.getElementById('searchResultsList');
+  const studentSection   = document.getElementById('studentSection');
+
+  const hidStudentId     = document.getElementById('studentIdHidden');
+  const formStudentId    = document.getElementById('form_student_id');
+
+  const s_name   = document.getElementById('s_name');
+  const s_roll   = document.getElementById('s_roll');
+  const s_reg    = document.getElementById('s_reg');
+  const s_course = document.getElementById('s_course');
+  const s_batch  = document.getElementById('s_batch');
+
+  const papersTableBody = document.querySelector('#studentPapersTable tbody');
+  const noPapersNote    = document.getElementById('noPapersNote');
+
+  const form            = document.getElementById('examPaperForm');   // add id="examPaperForm" to your <form>
+
+  // ------------------------------------------------------------
+  // Search students (uses /exam-papers/api/search_student)
+  // ------------------------------------------------------------
+  searchBtn.addEventListener('click', function () {
+    const q = (searchInput.value || '').trim();
+    if (!q) {
+      alert('Type student name / register / roll no to search.');
+      return;
+    }
+
+    fetch(`{{ url_for('exam_papers.api_search_student') }}?q=${encodeURIComponent(q)}`)
+      .then(r => r.json())
+      .then(data => {
+        resultsList.innerHTML = '';
+        if (!data.success || !data.students || data.students.length === 0) {
+          resultsBox.style.display = 'none';
+          alert('No students found.');
+          return;
+        }
+
+        data.students.forEach(st => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'list-group-item list-group-item-action';
+          btn.textContent =
+            `${st.name} | Roll: ${st.roll_no || '-'} | Reg: ${st.register_number || '-'}`;
+          btn.addEventListener('click', () => selectStudent(st));
+          resultsList.appendChild(btn);
+        });
+
+        resultsBox.style.display = 'block';
+      })
+      .catch(err => {
+        console.error(err);
+        alert('Error while searching students.');
+      });
+  });
+
+  function selectStudent(st) {
+    hidStudentId.value  = st.id;
+    formStudentId.value = st.id;
+
+    s_name.textContent   = st.name || '';
+    s_roll.textContent   = st.roll_no || '';
+    s_reg.textContent    = st.register_number || '';
+    s_course.textContent = st.course || '';
+    s_batch.textContent  = st.batch || '';
+
+    studentSection.style.display = 'block';
+    resultsBox.style.display = 'none';
+
+    loadStudentPapers(st.id);
+  }
+
+  // ------------------------------------------------------------
+  // Load existing papers for selected student
+  // ------------------------------------------------------------
+  function loadStudentPapers(studentId) {
+    papersTableBody.innerHTML = '';
+    noPapersNote.style.display = 'none';
+
+    fetch(`{{ url_for('exam_papers.api_get_papers') }}?student_id=${encodeURIComponent(studentId)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success || !data.papers || data.papers.length === 0) {
+          noPapersNote.style.display = 'block';
+          return;
+        }
+
+        data.papers.forEach((p, idx) => {
+          const tr = document.createElement('tr');
+
+          const viewUrl = `{{ url_for('exam_papers.view_exam_paper', filename='__FILE__') }}`.replace('__FILE__', encodeURIComponent(p.file_url));
+
+          tr.innerHTML = `
+            <td>${idx + 1}</td>
+            <td>${p.subject || ''}</td>
+            <td>${p.exam_name || ''}</td>
+            <td>${p.year || ''}</td>
+            <td>${p.uploaded_at || ''}</td>
+            <td>
+              <a href="${viewUrl}" target="_blank" class="btn btn-sm btn-outline-primary me-1">
+                View
+              </a>
+              <button type="button"
+                      class="btn btn-sm btn-outline-danger"
+                      data-paper-id="${p.id}">
+                Delete
+              </button>
+            </td>
+          `;
+          papersTableBody.appendChild(tr);
+        });
+
+        // Attach delete handlers
+        papersTableBody.querySelectorAll('button[data-paper-id]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const pid = btn.getAttribute('data-paper-id');
+            if (confirm('Delete this exam paper?')) {
+              deletePaper(pid);
+            }
+          });
+        });
+      })
+      .catch(err => {
+        console.warn('Papers list API error:', err);
+      });
+  }
+
+  // ------------------------------------------------------------
+  // Delete paper (AJAX)
+  // ------------------------------------------------------------
+  function deletePaper(paperId) {
+    const fd = new FormData();
+    fd.append('paper_id', paperId);
+
+    fetch(`{{ url_for('exam_papers.api_delete_paper') }}`, {
+      method: 'POST',
+      body: fd
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) {
+          alert(data.msg || 'Delete failed');
+          return;
+        }
+        // reload list for current student
+        if (hidStudentId.value) {
+          loadStudentPapers(hidStudentId.value);
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        alert('Delete error.');
+      });
+  }
+
+  // ------------------------------------------------------------
+  // Upload form – AJAX, NO PAGE REFRESH
+  // ------------------------------------------------------------
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+
+    if (!formStudentId.value) {
+      alert('Select a student first.');
+      return;
+    }
+
+    const fd = new FormData(form);
+
+    fetch(`{{ url_for('exam_papers.api_upload_exam_paper') }}`, {
+      method: 'POST',
+      body: fd
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) {
+          alert(data.msg || 'Upload failed');
+          return;
+        }
+        alert('File uploaded successfully.');
+        form.reset();
+        // keep student selection – restore hidden id
+        formStudentId.value = hidStudentId.value;
+        // reload list
+        loadStudentPapers(hidStudentId.value);
+      })
+      .catch(err => {
+        console.error(err);
+        alert('Upload error.');
+      });
+  });
+
+  // Placeholder for future real scanner integration
+ document.getElementById('btnScanNow').addEventListener('click', () => {
+    if (!formStudentId.value) {
+      alert("Select a student first");
+      return;
+    }
+
+    const payload = {
+        student_id: formStudentId.value,
+        subject_name: document.querySelector('[name="subject_name"]').value,
+        exam_name: document.querySelector('[name="exam_name"]').value,
+        year: document.querySelector('[name="year"]').value
+    };
+
+    fetch("http://192.168.1.10:6006/scan", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (!d.success) return alert(d.msg || "Scan failed");
+        alert("Scan completed and uploaded!");
+        loadStudentPapers(hidStudentId.value);
+    })
+    .catch(err => {
+        console.error(err);
+        alert("Scanner not connected or network issue");
+    });
+});
+
+</script>
+{% endblock %}

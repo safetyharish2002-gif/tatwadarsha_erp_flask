@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container-fluid">
+
+    <h4 class="fw-bold mb-3">💰 Fee Master</h4>
+
+    <!-- Fee Head Form -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+            <strong>Add / Update Fee Head</strong>
+        </div>
+
+        <div class="card-body">
+
+            <form id="head-form">
+                <input type="hidden" id="head-id" name="id">
+
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Fee Head Name</label>
+                        <input id="head-name" name="name" class="form-control" placeholder="Enter Fee Head Name" required>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Amount</label>
+                        <input id="head-amount" name="amount" type="number" class="form-control" placeholder="Amount" required>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Due Date</label>
+                        <input id="head-due" name="due_date" type="date" class="form-control">
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Start Date</label>
+                        <input id="head-start" name="start_date" type="date" class="form-control">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">End Date</label>
+                        <input id="head-end" name="end_date" type="date" class="form-control">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Status</label>
+                        <select id="head-status" name="status" class="form-select">
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Save Fee Head</button>
+                <button type="button" class="btn btn-secondary" onclick="resetForm()">Clear</button>
+
+            </form>
+
+        </div>
+    </div>
+
+    <!-- Fee Heads Table -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <strong>Fee Heads List</strong>
+
+            <input id="searchBox" type="text" class="form-control w-25" placeholder="Search...">
+        </div>
+
+        <div class="card-body">
+            <table class="table table-bordered table-hover" id="heads-table">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th>Amount</th>
+                        <th>Start Date</th>
+                        <th>End Date</th>
+                        <th>Due Date</th>
+                        <th>Status</th>
+                        <th width="150">Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- ====================== EDIT MODAL ====================== -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Fee Head</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        
+        <input type="hidden" id="edit-id">
+
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Fee Head Name</label>
+                <input id="edit-name" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Amount</label>
+                <input id="edit-amount" type="number" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Due Date</label>
+                <input id="edit-due" type="date" class="form-control">
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Start Date</label>
+                <input id="edit-start" type="date" class="form-control">
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">End Date</label>
+                <input id="edit-end" type="date" class="form-control">
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Status</label>
+                <select id="edit-status" class="form-select">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                </select>
+            </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-success" onclick="updateHead()">Save Changes</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+
+function dmy(dateStr){
+    if(!dateStr) return "";
+    try {
+        const d = new Date(dateStr);
+        if(isNaN(d)) return "";
+        return d.toLocaleDateString("en-GB");
+    } catch {
+        return "";
+    }
+}
+
+function toYMD(dateStr){
+    if(!dateStr) return "";
+    try {
+        return new Date(dateStr).toISOString().split("T")[0];
+    } catch {
+        return "";
+    }
+}
+
+const tbody = document.querySelector("#heads-table tbody");
+
+function resetForm(){
+    document.getElementById("head-form").reset();
+}
+
+// LOAD HEADS
+async function loadHeads() {
+    const res = await fetch('/fees/api/heads');
+    const data = await res.json();
+    tbody.innerHTML = "";
+
+    if (data.success) {
+        data.items.forEach(h => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${h.name}</td>
+                <td>${h.amount}</td>
+                <td>${dmy(h.start_date)}</td>
+                <td>${dmy(h.end_date)}</td>
+                <td>${dmy(h.due_date)}</td>
+                <td>${h.status}</td>
+                <td class="text-center">
+                    <button class="btn btn-sm btn-success me-1" onclick="openEditModal('${h.id}')">✏ Edit</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteHead('${h.id}')">🗑 Delete</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+}
+
+// OPEN EDIT MODAL
+function openEditModal(id){
+    fetch('/fees/api/heads')
+        .then(r => r.json())
+        .then(j => {
+            const h = j.items.find(x => x.id === id);
+            if (!h) return;
+
+            document.getElementById("edit-id").value = h.id;
+            document.getElementById("edit-name").value = h.name;
+            document.getElementById("edit-amount").value = h.amount;
+
+            document.getElementById("edit-start").value = toYMD(h.start_date);
+            document.getElementById("edit-end").value = toYMD(h.end_date);
+            document.getElementById("edit-due").value = toYMD(h.due_date);
+
+            document.getElementById("edit-status").value = h.status;
+
+            new bootstrap.Modal(document.getElementById("editModal")).show();
+        });
+}
+
+// UPDATE HEAD
+async function updateHead(){
+    const id = document.getElementById("edit-id").value;
+
+    const payload = {
+        name: document.getElementById("edit-name").value,
+        amount: document.getElementById("edit-amount").value,
+        start_date: document.getElementById("edit-start").value,
+        end_date: document.getElementById("edit-end").value,
+        due_date: document.getElementById("edit-due").value,
+        status: document.getElementById("edit-status").value,
+    };
+
+    const res = await fetch(`/fees/api/heads/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    });
+
+    const j = await res.json();
+
+    if(j.success){
+        bootstrap.Modal.getInstance(document.getElementById("editModal")).hide();
+        loadHeads();
+    }
+}
+
+// DELETE
+async function deleteHead(id){
+    if(!confirm("Delete Fee Head?")) return;
+
+    await fetch(`/fees/api/heads/${id}`, { method: "DELETE" });
+    loadHeads();
+}
+
+// ADD NEW
+document.getElementById("head-form").onsubmit = async (e) => {
+    e.preventDefault();
+
+    const payload = {
+        name: document.getElementById("head-name").value,
+        amount: document.getElementById("head-amount").value,
+        start_date: document.getElementById("head-start").value,
+        end_date: document.getElementById("head-end").value,
+        due_date: document.getElementById("head-due").value,
+        status: document.getElementById("head-status").value,
+    };
+
+    await fetch("/fees/api/heads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+
+    resetForm();
+    loadHeads();
+};
+
+// SEARCH
+document.getElementById("searchBox").addEventListener("input", function(){
+    const term = this.value.toLowerCase();
+    document.querySelectorAll("#heads-table tbody tr").forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(term) ? "" : "none";
+    });
+});
+
+loadHeads();
+</script>
+{% endblock %}

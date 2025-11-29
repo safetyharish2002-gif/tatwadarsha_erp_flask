@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}View Exam Papers{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+  <h4 class="fw-bold mb-3">📂 View / Manage Exam Papers</h4>
+
+  <!-- Search -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="row g-2 align-items-center">
+        <div class="col-md-6">
+          <input id="searchText" type="text" class="form-control"
+                 placeholder="Search by Name / Roll No / Register No">
+        </div>
+        <div class="col-md-3">
+          <button id="btnSearch" class="btn btn-primary w-100">Search</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <div class="col-md-2">
+  <input id="fromDate" type="date" class="form-control">
+</div>
+<div class="col-md-2">
+  <input id="toDate" type="date" class="form-control">
+</div>
+</div>
+
+  <!-- Table -->
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-striped table-sm mb-0" id="papersTable">
+          <thead class="table-light">
+            <tr>
+              <th data-sort="index" class="sortable">#</th>
+              <th data-sort="student" class="sortable">Student</th>
+              <th data-sort="roll" class="sortable">Roll No</th>
+              <th data-sort="subject" class="sortable">Subject</th>
+              <th data-sort="exam" class="sortable">Exam</th>
+              <th data-sort="year" class="sortable">Year</th>
+              <th data-sort="uploaded" class="sortable">Uploaded</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Filled by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div id="msgNoData" class="p-3 text-center text-muted" style="display:none;">
+        No matching results found.
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+
+const tableBody = document.querySelector("#papersTable tbody");
+const msgNoData = document.getElementById("msgNoData");
+const txtSearch = document.getElementById("searchText");
+const fromDate = document.getElementById("fromDate");
+const toDate = document.getElementById("toDate");
+
+function loadPapers(pageLoad = false) {
+
+  const params = new URLSearchParams();
+  if (txtSearch.value.trim()) params.append("q", txtSearch.value.trim());
+  if (fromDate.value) params.append("from", fromDate.value);
+  if (toDate.value) params.append("to", toDate.value);
+
+  fetch(`/exam-papers/api/get_all?${params.toString()}`)
+    .then(r => r.json())
+    .then(d => {
+
+      tableBody.innerHTML = "";
+
+      if (!d.success || d.papers.length === 0) {
+        msgNoData.style.display = "block";
+        return;
+      }
+
+      msgNoData.style.display = "none";
+
+      d.papers.forEach((p, i) => {
+        const viewUrl = `/exam-papers/file/${encodeURIComponent(p.file_url)}`;
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${i + 1}</td>
+          <td>${p.name}</td>
+          <td>${p.roll_no || "-"}</td>
+          <td>${p.subject}</td>
+          <td>${p.exam_name}</td>
+          <td>${p.year}</td>
+          <td>${p.uploaded_at}</td>
+          <td>
+            <a href="${viewUrl}" target="_blank"
+               class="btn btn-sm btn-outline-primary me-1">View</a>
+            <button class="btn btn-sm btn-outline-danger"
+                    onclick="deletePaper(${p.id})">Delete</button>
+          </td>`;
+        tableBody.appendChild(tr);
+      });
+    })
+    .catch(e => console.error(e));
+}
+
+document.getElementById("btnSearch").addEventListener("click", loadPapers);
+txtSearch.addEventListener("keyup", e => { if (e.key === "Enter") loadPapers(); });
+fromDate.addEventListener("change", loadPapers);
+toDate.addEventListener("change", loadPapers);
+
+function deletePaper(id) {
+  if (!confirm("Delete this exam paper?")) return;
+  const fd = new FormData();
+  fd.append("paper_id", id);
+
+  fetch(`/exam-papers/api/delete`, { method: "POST", body: fd })
+    .then(r => r.json())
+    .then(() => loadPapers());
+}
+
+// 👇 Auto-load papers as soon as page opens
+document.addEventListener("DOMContentLoaded", () => loadPapers(true));
+
+</script>
+{% endblock %}

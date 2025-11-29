@@ -111,13 +111,15 @@ try:
     from app.routers.roll_number_allocation import roll_bp
     from app.routers.dashboard import dashboard_bp
     from app.routers.fees import fees_bp   # ✅ ADD THIS LINE
+    from app.routers.exam_papers import exam_papers_bp
 
     # Register blueprints only if imports succeed
     app.register_blueprint(master_bp)
     app.register_blueprint(students_bp)
     app.register_blueprint(roll_bp)
     app.register_blueprint(dashboard_bp)
-    app.register_blueprint(fees_bp, url_prefix="/fees")   # ✅ ADD THIS LINE
+    app.register_blueprint(fees_bp)
+    app.register_blueprint(exam_papers_bp)
 
 except Exception as e:
     print("⚠️ Warning: Blueprint import/register failed:", e)
@@ -508,7 +510,21 @@ with app.app_context():
         print("====================================\n")
     except Exception as e:
         print("Could not print routes:", e)
+        
+# ======================================
+# Serve Exam Paper Files
+# ======================================
+from flask import send_from_directory
 
+EXAM_PAPER_PATH = os.path.join(BASE_DIR, "static", "exam_papers")
+
+@app.route("/exam-files/<path:filename>")
+def exam_files(filename):
+    try:
+        return send_from_directory(EXAM_PAPER_PATH, filename, as_attachment=False)
+    except Exception as e:
+        print("File serve error:", e)
+        return "File Not Found", 404
 
 # ======================================
 # RUN APPLICATION

@@ -172,15 +172,15 @@
   <div class="dropdown-container">
 
     <a href="/fees/master">Fee Master</a>
-    <a href="/fees/structure">Fee Structure</a>
+    <a href="/fees/assign">Assign Fees</a>
     <a href="/fees/collect">Collect Fees</a>
     <a href="/fees/receipts">Fee Receipts</a>
     <a href="/fees/pending">Pending Fees</a>
-    <a href="/fees/defaulters">Defaulter List</a>
     <a href="/fees/reports">Fee Reports</a>
 
   </div>
 </div>
+
 
         <div class="sidebar-dropdown mt-2">
           <button class="dropdown-btn">⚙️ Master <span class="arrow">▸</span></button>
@@ -203,7 +203,21 @@
           </div>
         </div>
 
-        <a href="/attendance" class="erp-link">📅 Attendance</a>
+  <div class="sidebar-dropdown mt-2">
+    <button class="dropdown-btn">📝 Exam Papers <span class="arrow">›</span></button>
+    <div class="dropdown-container">
+        <a href="{{ url_for('exam_papers.add_exam_paper') }}"> Add / Scan Exam Paper</a>
+        <a href="{{ url_for('exam_papers.list_exam_papers_page') }}"> View Exam Papers</a>
+    </div>
+</div>
+
+  <div class="sidebar-dropdown mt-2">
+    <button class="dropdown-btn"> Accounts <span class="arrow">›</span></button>
+    <div class="dropdown-container">
+    </div>
+</div>
+
+         <a href="/attendance" class="erp-link">📅 Attendance</a>
         <a href="/reports" class="erp-link">📊 Reports</a>
       </nav>
 
@@ -283,5 +297,9 @@
       localStorage.setItem('erp-theme', isDark ? 'dark' : 'light');
     });
   </script>
+
+  <!-- Page-specific scripts -->
+{% block scripts %}{% endblock %}
+
 </body>
 </html>
