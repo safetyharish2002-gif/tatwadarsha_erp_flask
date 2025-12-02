@@ -313,7 +313,7 @@
   async function loadStudents() {
     const q = new URLSearchParams(getFilters()).toString();
     try {
-      const res = await fetch('/api/reports/students?' + q);
+      const res = await fetch('/fees/api/reports/students?' + q);
       const rows = res.ok ? await res.json() : [];
       const tbody = $('#tblStudents tbody'); tbody.innerHTML = '';
       if(!rows.length){ tbody.innerHTML = '<tr><td colspan="7" class="text-muted">No records found</td></tr>'; return; }
@@ -336,7 +336,7 @@
   async function loadBatches() {
     const q = new URLSearchParams(getFilters()).toString();
     try {
-      const res = await fetch('/api/reports/batches?' + q);
+      const res = await fetch('/fees/api/reports/batches?' + q);
       const rows = res.ok ? await res.json() : [];
       const tbody = $('#tblBatches tbody'); tbody.innerHTML = '';
       if(!rows.length){ tbody.innerHTML = '<tr><td colspan="5" class="text-muted">No data</td></tr>'; return; }
@@ -353,7 +353,7 @@
     filters.date = $('#dailyDate').value || new Date().toISOString().slice(0,10);
     const q = new URLSearchParams(filters).toString();
     try {
-      const res = await fetch('/api/reports/collections?' + q);
+      const res = await fetch('/fees/api/reports/collections?' + q);
       const rows = res.ok ? await res.json() : [];
       const tbody = $('#tblDaily tbody'); tbody.innerHTML = '';
       if(!rows.length){ tbody.innerHTML = '<tr><td colspan="5" class="text-muted">No receipts</td></tr>'; return; }
@@ -370,7 +370,7 @@
     filters.from = from; filters.to = to;
     const q = new URLSearchParams(filters).toString();
     try {
-      const res = await fetch('/api/reports/collections?' + q);
+      const res = await fetch('/fees/api/reports/collections?' + q);
       const rows = res.ok ? await res.json() : [];
       const tbody = $('#tblRange tbody'); tbody.innerHTML = '';
       let total = 0;
@@ -388,7 +388,7 @@
   async function loadHeads() {
     const q = new URLSearchParams(getFilters()).toString();
     try {
-      const res = await fetch('/api/reports/heads?' + q);
+      const res = await fetch('/fees/api/reports/heads?' + q);
       const rows = res.ok ? await res.json() : [];
       const tbody = $('#tblHeads tbody'); tbody.innerHTML = '';
       if(!rows.length){ tbody.innerHTML = '<tr><td colspan="5" class="text-muted">No data</td></tr>'; return; }
@@ -407,7 +407,7 @@
     filters.threshold = threshold;
     const q = new URLSearchParams(filters).toString();
     try {
-      const res = await fetch('/api/reports/defaulters?' + q);
+      const res = await fetch('/fees/api/reports/defaulters?' + q);
       const rows = res.ok ? await res.json() : [];
       const tbody = $('#tblDefaulters tbody'); tbody.innerHTML = '';
       if(!rows.length){ tbody.innerHTML = '<tr><td colspan="4" class="text-muted">No defaulters</td></tr>'; return; }
@@ -432,7 +432,7 @@
 
   async function showStudentDetail(id){
     try {
-      const res = await fetch('/api/students/' + encodeURIComponent(id));
+      const res = await fetch('/fees/api/students/' + encodeURIComponent(id));
       if(!res.ok) return;
       const d = await res.json();
       $('#drawerName').textContent = d.name || '';

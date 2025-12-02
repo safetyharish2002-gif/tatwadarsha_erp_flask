@@ -28,6 +28,12 @@ app = Flask(
 app.secret_key = os.getenv("SECRET_KEY", "tatwadarsha_secret_2025")
 app.permanent_session_lifetime = timedelta(hours=6)
 
+UPLOAD_FOLDER_FINANCE = os.path.join(BASE_DIR, "uploads", "finance")
+os.makedirs(UPLOAD_FOLDER_FINANCE, exist_ok=True)
+app.config["UPLOAD_FOLDER_FINANCE"] = UPLOAD_FOLDER_FINANCE
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB
+ALLOWED_EXTENSIONS_FINANCE = {"pdf", "jpg", "jpeg", "png"}
+
 # ======================================
 # Database helper functions
 # ======================================
@@ -112,6 +118,8 @@ try:
     from app.routers.dashboard import dashboard_bp
     from app.routers.fees import fees_bp   # ✅ ADD THIS LINE
     from app.routers.exam_papers import exam_papers_bp
+    from app.routers.finance import finance_bp    
+    from app.routers.chat import chat_bp
 
     # Register blueprints only if imports succeed
     app.register_blueprint(master_bp)
@@ -120,6 +128,8 @@ try:
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(fees_bp)
     app.register_blueprint(exam_papers_bp)
+    app.register_blueprint(finance_bp) 
+    app.register_blueprint(chat_bp)
 
 except Exception as e:
     print("⚠️ Warning: Blueprint import/register failed:", e)

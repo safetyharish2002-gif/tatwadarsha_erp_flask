@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}Income Entry | Finance{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="fw-bold mb-0">💰 Income Entry</h4>
+    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#incomeCategoryModal">
+      ⚙ Manage Income Categories
+    </button>
+  </div>
+
+  <!-- Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="mb-3">
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+      {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <!-- Income Entry Form -->
+  <form action="" method="POST" enctype="multipart/form-data"
+        class="glass-card p-3 rounded-3 shadow-sm mb-4">
+    <input type="hidden" name="form_type" value="income">
+
+    <div class="row g-3">
+
+      <div class="col-md-4">
+        <label class="form-label small">Account (Cash / Bank)</label>
+        <select name="account_id" class="form-select form-select-sm" required>
+          <option value="">Select Account</option>
+          {% for acc in accounts %}
+          <option value="{{ acc.id }}">{{ acc.account_type }} — {{ acc.account_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small">Income Category</label>
+        <select name="category" class="form-select form-select-sm" required>
+          <option value="">Select Category</option>
+          {% for cat in categories %}
+          <option value="{{ cat.category_name }}">{{ cat.category_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small">Amount</label>
+        <input type="number" step="0.01" name="amount" class="form-control form-control-sm" required>
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label small">Date</label>
+        <input type="date" name="tx_date" class="form-control form-control-sm" required>
+      </div>
+
+      <div class="col-md-8">
+        <label class="form-label small">Description / From</label>
+        <input type="text" name="description" class="form-control form-control-sm"
+               placeholder="Ex: Donation from Alumni, Misc income, etc.">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label small">Attachment (optional)</label>
+        <input type="file" name="attachment" class="form-control form-control-sm">
+      </div>
+
+      <div class="col-md-6 d-flex align-items-end justify-content-end">
+        <button type="submit" class="btn btn-success btn-sm mt-2">
+          ➕ Add Income
+        </button>
+      </div>
+
+    </div>
+  </form>
+
+  <!-- Filters -->
+  <form method="GET" class="glass-card p-3 rounded-3 shadow-sm mb-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label small">From Date</label>
+        <input type="date" name="from_date" class="form-control form-control-sm"
+               value="{{ from_date or '' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">To Date</label>
+        <input type="date" name="to_date" class="form-control form-control-sm"
+               value="{{ to_date or '' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Income Category</label>
+        <select name="category" class="form-select form-select-sm">
+          <option value="ALL">All</option>
+          {% for cat in categories %}
+          <option value="{{ cat.category_name }}"
+            {% if category_filter == cat.category_name %}selected{% endif %}>
+            {{ cat.category_name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3 text-end">
+        <button class="btn btn-primary btn-sm mt-2">🔎 Apply Filter</button>
+        <a href="{{ url_for('finance.income_entry') }}" class="btn btn-outline-secondary btn-sm mt-2">Reset</a>
+      </div>
+    </div>
+  </form>
+
+  <!-- Income List -->
+  <div class="glass-card p-3 rounded-3 shadow-sm">
+    <h5 class="fw-bold mb-3">📊 Income History</h5>
+
+    <div class="table-responsive">
+      <table class="table table-striped table-hover align-middle text-center">
+        <thead style="background:#0b5d1e; color:#fff;">
+          <tr>
+            <th>Sl</th>
+            <th>Date</th>
+            <th>Account</th>
+            <th>Category</th>
+            <th>Description</th>
+            <th>Amount</th>
+            <th>Attachment</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for tx in income_rows %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ tx.tx_date }}</td>
+            <td>{{ tx.account_type }} — {{ tx.account_name }}</td>
+            <td>{{ tx.category or '-' }}</td>
+            <td>{{ tx.description or '-' }}</td>
+            <td class="fw-bold text-success">₹ {{ "%.2f"|format(tx.amount or 0) }}</td>
+            <td>
+              {% if tx.attachment_url %}
+              <a href="{{ url_for('finance.finance_attachment', filename=tx.attachment_url) }}"
+                 target="_blank" class="btn btn-sm btn-dark">📎 View</a>
+              {% else %}-{% endif %}
+            </td>
+            <td>
+              <form action="{{ url_for('finance.delete_income', tx_id=tx.id) }}" method="POST"
+                    onsubmit="return confirm('Delete this income entry?');">
+                <button class="btn btn-danger btn-sm">🗑</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="text-muted">No income records found</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Income Category Modal -->
+<div class="modal fade" id="incomeCategoryModal" tabindex="-1">
+  <div class="modal-dialog modal-md">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Income Categories</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Add Category -->
+        <form method="POST" class="mb-3">
+          <input type="hidden" name="form_type" value="add_income_category">
+          <div class="input-group input-group-sm">
+            <input type="text" name="category_name" class="form-control" placeholder="New income category..." required>
+            <button class="btn btn-primary">Add</button>
+          </div>
+        </form>
+
+        <hr>
+
+        <!-- Existing Categories -->
+        {% if categories %}
+        <ul class="list-group list-group-flush">
+          {% for cat in categories %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>{{ cat.category_name }}</span>
+            <form method="POST" onsubmit="return confirm('Delete this category?');">
+              <input type="hidden" name="form_type" value="delete_income_category">
+              <input type="hidden" name="category_id" value="{{ cat.id }}">
+              <button class="btn btn-sm btn-outline-danger">🗑</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="text-muted small">No categories found. Add your first category above.</div>
+        {% endif %}
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

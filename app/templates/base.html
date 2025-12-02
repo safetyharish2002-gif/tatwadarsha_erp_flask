@@ -211,11 +211,18 @@
     </div>
 </div>
 
-  <div class="sidebar-dropdown mt-2">
-    <button class="dropdown-btn"> Accounts <span class="arrow">›</span></button>
-    <div class="dropdown-container">
-    </div>
+<!-- Finance Module -->
+<div class="sidebar-dropdown mt-2">
+  <button class="dropdown-btn">🏦 Finance <span class="arrow">›</span></button>
+  <div class="dropdown-container">
+    <a href="{{ url_for('finance.cash_bank_master') }}"> Cash & Bank Master</a>
+    <a href="{{ url_for('finance.bank_deposit') }}">Bank Deposit</a>
+    <a href="{{ url_for('finance.self_withdrawal') }}">Self Withdrawal</a>
+    <a href="{{ url_for('finance.expense_entry') }}">Expense Entry</a>
+    <a href="{{ url_for('finance.income_entry') }}">Inome Entry</a>
+  </div>
 </div>
+
 
          <a href="/attendance" class="erp-link">📅 Attendance</a>
         <a href="/reports" class="erp-link">📊 Reports</a>

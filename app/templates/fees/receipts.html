@@ -1,116 +1,409 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ title or 'Receipts' }}</title>
+{% extends "base.html" %}
+{% block title %}Fee Receipts | Tatwadarsha ERP{% endblock %}
 
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+{% block content %}
 
 <style>
-  body {
-    background: #0f1724;
-    color: #e6eef8;
-    font-family: Arial, Helvetica, sans-serif;
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
   }
-  .glass-card{
-    background: rgba(255,255,255,0.05);
-    padding: 1rem;
-    border-radius: 12px;
-    border:1px solid rgba(255,255,255,0.1);
+
+  body * {
+    visibility: hidden !important;
   }
-  .table thead th{
-    color:#fff;
-    border-bottom:1px solid rgba(255,255,255,0.2);
+
+  #receiptView,
+  #receiptView * {
+    visibility: visible !important;
   }
-  .table tbody td{
-    color:#e6eef8;
+
+  #receiptView {
+    position: absolute !important;
+    top: -0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    min-height: 270mm !important;
+    padding: 10mm !important;
+    border: 1px solid black !important;
+    background: #fff !important;
+    box-shadow: none !important;
   }
+}
 </style>
 
-</head>
-<body>
 
-<div class="container py-4">
 
-  <div class="d-flex justify-content-between mb-3">
-    <h4>Fee Receipts</h4>
+<div class="container-fluid py-3">
+  <h4 class="fw-bold mb-3">🧾 Fee Receipts</h4>
 
-    <div>
-      <input id="f-student" class="form-control form-control-sm d-inline-block" 
-             style="width:200px" placeholder="Student ID">
-
-      <button class="btn btn-primary btn-sm" id="btn-filter">
-        Search
-      </button>
+  <!-- Filters -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="row g-2">
+        <div class="col-md-2">
+          <label class="form-label small">Session</label>
+          <select id="filterSession" class="form-select form-select-sm">
+            <option value="">All Sessions</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">Course</label>
+          <select id="filterCourse" class="form-select form-select-sm">
+            <option value="">All Courses</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">Branch</label>
+          <select id="filterBranch" class="form-select form-select-sm">
+            <option value="">All Branches</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">Department</label>
+          <select id="filterDepartment" class="form-select form-select-sm">
+            <option value="">All Departments</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">Batch</label>
+          <select id="filterBatch" class="form-select form-select-sm">
+            <option value="">All Batches</option>
+          </select>
+        </div>
+        <div class="col-12 mt-2">
+          <label class="form-label small">Search (name / register / phone)</label>
+          <input id="filterSearch" class="form-control form-control-sm" placeholder="Type and press Enter">
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="glass-card">
-    <table class="table table-dark table-striped" id="receipts-table">
-      <thead>
-        <tr>
-          <th>Receipt No</th>
-          <th>Student</th>
-          <th>Head</th>
-          <th>Amount</th>
-          <th>Mode</th>
-          <th>Print</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
+  <!-- Layout: list left, preview right -->
+  <div class="row">
+    <!-- Receipts table -->
+    <div class="col-lg-7 mb-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body d-flex flex-column">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">Receipts</h6>
+            <button id="btnRefresh" class="btn btn-sm btn-outline-secondary">Refresh</button>
+          </div>
+          <div class="table-responsive" style="max-height:430px; overflow:auto;">
+            <table class="table table-sm align-middle" id="tblReceipts">
+              <thead class="table-light">
+                <tr>
+                  <th>Receipt No</th>
+                  <th>Student</th>
+                  <th>Course</th>
+                  <th>Amount</th>
+                  <th>Mode</th>
+                  <th>Paid On</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="7" class="text-muted small">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
 
+    <!-- Receipt preview -->
+    <div class="col-lg-5 mb-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body d-flex flex-column">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">Receipt Preview</h6>
+            <button id="btnPrint" class="btn btn-sm btn-outline-primary" disabled>Print</button>
+          </div>
+
+          <div id="receiptPreviewWrap" class="flex-fill">
+            <div id="receiptEmptyMsg" class="text-muted small text-center mt-5">
+              Select any receipt from the left side to preview &amp; print.
+            </div>
+
+            <!-- This is what will be printed -->
+            <div id="receiptView"
+                 class="mx-auto"
+                 style="max-width: 680px; background:#ffffff; padding:16px; border:1px solid #ddd; border-radius:4px; display:none; font-size:12px;">
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
+{% endblock %}
 
+{% block scripts %}
 <script>
-async function loadReceipts(){
+(function(){
+  const $ = (s, ctx=document) => ctx.querySelector(s);
+  const $$ = (s, ctx=document) => Array.from((ctx||document).querySelectorAll(s));
+  const fmt = n => "₹ " + Number(n||0).toLocaleString("en-IN", {minimumFractionDigits:2, maximumFractionDigits:2});
 
-  let sid = document.getElementById("f-student").value.trim();
-  let url = "/fees/api/receipts";
+  let currentReceipt = null;   // for print
 
-  if(sid){
-    url += "?student_id=" + encodeURIComponent(sid);
+  // ------------------------------
+  // Load master dropdowns
+  // ------------------------------
+  async function loadMasterOptions(name, selectEl, allLabel){
+    if(!selectEl) return;
+    selectEl.innerHTML = `<option value="">${allLabel}</option>`;
+    try{
+      const res = await fetch('/master/' + encodeURIComponent(name) + '/items');
+      const j = await res.json();
+      if(j && Array.isArray(j.items)){
+        j.items.forEach(it => {
+          const o = document.createElement('option');
+          o.value = it.id;
+          o.textContent = it.name;
+          selectEl.appendChild(o);
+        });
+      }
+    }catch(e){ console.error('loadMasterOptions', name, e); }
   }
 
-  const res = await fetch(url);
-  const j = await res.json();
+  loadMasterOptions('session',    $('#filterSession'),    'All Sessions');
+  loadMasterOptions('course',     $('#filterCourse'),     'All Courses');
+  loadMasterOptions('branch',     $('#filterBranch'),     'All Branches');
+  loadMasterOptions('department', $('#filterDepartment'), 'All Departments');
+  loadMasterOptions('batch',      $('#filterBatch'),      'All Batches');
 
-  let tb = document.querySelector("#receipts-table tbody");
-  tb.innerHTML = "";
+  // ------------------------------
+  // Load receipts list
+  // ------------------------------
+  function getFilterParams(){
+    return {
+      session:   $('#filterSession').value || '',
+      course:    $('#filterCourse').value || '',
+      branch:    $('#filterBranch').value || '',
+      department:$('#filterDepartment').value || '',
+      batch:     $('#filterBatch').value || '',
+      search:    $('#filterSearch').value.trim()
+    };
+  }
 
-  if(j.success){
-    j.items.forEach(r => {
+  async function loadReceipts(){
+    const tbody = $('#tblReceipts tbody');
+    tbody.innerHTML = '<tr><td colspan="7" class="text-muted small">Loading...</td></tr>';
 
-      let tr = document.createElement("tr");
+    const params = new URLSearchParams(getFilterParams()).toString();
+    try{
+      const res = await fetch('/fees/api/receipts?' + params);
+      const j = await res.json();
+      if(!j.success){
+        tbody.innerHTML = '<tr><td colspan="7" class="text-danger small">Failed to load receipts</td></tr>';
+        return;
+      }
+      const items = j.items || [];
+      if(!items.length){
+        tbody.innerHTML = '<tr><td colspan="7" class="text-muted small">No receipts found</td></tr>';
+        return;
+      }
 
-      tr.innerHTML = `
-        <td>${r.receipt_no}</td>
-        <td>${r.student_id}</td>
-        <td>${r.head_name || ''}</td>
-        <td>₹ ${Number(r.paid_amount).toFixed(2)}</td>
-        <td>${r.payment_mode || ''}</td>
-        <td>
-          <a href="/fees/receipt/view/${r.receipt_id}" 
-             target="_blank" 
-             class="btn btn-outline-light btn-sm">
-             🖨 Print
-          </a>
-        </td>
+      tbody.innerHTML = '';
+      items.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="small">${r.receipt_no || ''}</td>
+          <td class="small">
+            <div class="fw-semibold">${r.student_name || ''}</div>
+            <div class="text-muted">${r.register_number || ''}</div>
+          </td>
+          <td class="small">${r.course || ''}</td>
+          <td class="small">${fmt(r.paid_amount || 0)}</td>
+          <td class="small">${r.payment_mode || ''}</td>
+          <td class="small text-muted">${r.paid_on || ''}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-secondary btn-view" data-id="${r.receipt_id}">View</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }catch(e){
+      console.error(e);
+      tbody.innerHTML = '<tr><td colspan="7" class="text-danger small">Error loading receipts</td></tr>';
+    }
+  }
+
+  // initial load
+  loadReceipts();
+
+  $('#btnRefresh').addEventListener('click', loadReceipts);
+
+  // reload when dropdowns change
+  ['filterSession','filterCourse','filterBranch','filterDepartment','filterBatch'].forEach(id => {
+    const el = $('#' + id);
+    if(el){
+      el.addEventListener('change', loadReceipts);
+    }
+  });
+
+  // search on Enter
+  $('#filterSearch').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      loadReceipts();
+    }
+  });
+
+  // ------------------------------
+  // View one receipt (preview)
+  // ------------------------------
+  document.querySelector('#tblReceipts tbody').addEventListener('click', async (e)=>{
+    const btn = e.target.closest('.btn-view');
+    if(!btn) return;
+    const rid = btn.dataset.id;
+    if(!rid) return;
+    await loadReceiptDetail(rid);
+  });
+
+  async function loadReceiptDetail(receiptId){
+    $('#btnPrint').disabled = true;
+    $('#receiptEmptyMsg').style.display = 'block';
+    $('#receiptView').style.display = 'none';
+
+    try{
+      const res = await fetch('/fees/api/receipt/' + encodeURIComponent(receiptId));
+      const j = await res.json();
+      if(!j.success){
+        alert(j.message || 'Failed to load receipt');
+        return;
+      }
+      const d = j.receipt;
+      d.amount = d.paid_amount;
+
+      currentReceipt = d;
+      $('#btnPrint').disabled = false;
+      $('#receiptEmptyMsg').style.display = 'none';
+
+      // build small centered receipt
+      const box = $('#receiptView');
+      box.innerHTML = `
+        <div style="text-align:center; margin-bottom:6px;">
+          <img src="{{ url_for('static', filename='images/logo.png') }}" style="height:60px; margin-bottom:4px;">
+          <div style="font-weight:700; font-size:14px;">TATWADARSHA INSTITUTE OF NURSING SCIENCES</div>
+          <div style="font-size:11px;">Vidya Nagar, Hubballi, Karnataka - 580021</div>
+          <div style="font-size:11px;">Email: principaltions@gmail.com</div>
+          <div style="font-weight:700; margin-top:6px; text-decoration:underline; letter-spacing:1px;">
+            FEE RECEIPT
+          </div>
+        </div>
+
+        <div style="font-size:11px; margin-bottom:4px;">
+          <div style="display:flex; justify-content:space-between;">
+            <span><strong>Receipt No:</strong> ${d.receipt_no || ''}</span>
+            <span><strong>Date:</strong> ${d.paid_on_date || ''}</span>
+          </div>
+        </div>
+
+        <hr style="margin:4px 0 6px;">
+
+        <div style="font-size:11px; margin-bottom:4px;">
+          <div><strong>Name:</strong> ${d.student_name || ''}</div>
+          <div><strong>Register No:</strong> ${d.register_number || ''}</div>
+          <div><strong>Course / Branch:</strong> ${[d.course, d.branch].filter(Boolean).join(' / ')}</div>
+          <div><strong>Department:</strong> ${d.department || ''}</div>
+          <div><strong>Session / Batch:</strong> ${[d.session, d.batch].filter(Boolean).join(' / ')}</div>
+          <div><strong>Gender / DOB:</strong> ${[d.gender || '', d.dob || ''].filter(Boolean).join(' / ')}</div>
+          <div><strong>Phone:</strong> ${d.phone || ''}</div>
+          <div><strong>Email:</strong> ${d.email || ''}</div>
+        </div>
+
+        <hr style="margin:4px 0 6px;">
+
+        <table style="width:100%; font-size:11px; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left; border-bottom:1px solid #ccc; padding-bottom:4px;">Particulars</th>
+              <th style="text-align:right; border-bottom:1px solid #ccc; padding-bottom:4px;">Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding-top:4px;">${d.head_name || 'Fees'}</td>
+              <td style="padding-top:4px; text-align:right;">${fmt(d.amount || 0)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <hr style="margin:6px 0 6px;">
+
+        <div style="font-size:11px; display:flex; justify-content:space-between; margin-bottom:6px;">
+          <div><strong>Payment Mode:</strong> ${d.payment_mode || ''}</div>
+          <div><strong>Reference No:</strong> ${d.reference_no || ''}</div>
+        </div>
+
+        <div style="font-size:11px; margin-bottom:20px;">
+          <strong>Amount in words:</strong> 
+          <span>${numberToWordsIndian(Math.round(d.amount || 0))} only</span>
+        </div>
+
+        <div style="font-size:11px; display:flex; justify-content:space-between; margin-top:10px;">
+          <div>Signature of Payer</div>
+          <div>Authorised Signatory</div>
+        </div>
+
+        <div style="font-size:10px; text-align:center; margin-top:10px;">
+          Thanks for your payment.
+        </div>
       `;
-
-      tb.appendChild(tr);
-    });
+      box.style.display = 'block';
+    }catch(e){
+      console.error(e);
+      alert('Error loading receipt');
+    }
   }
-}
 
-document.getElementById("btn-filter").onclick = loadReceipts;
+  // ------------------------------
+  // Print only current receipt
+  // ------------------------------
+  $('#btnPrint').addEventListener('click', ()=>{
+    if(!currentReceipt) return;
+    window.print();
+  });
 
-// Auto-load receipts
-loadReceipts();
+  // -------------
+  // amount in words (simple Indian style)
+  // -------------
+  function numberToWordsIndian(num){
+    if(isNaN(num)) return '';
+    const a = ['', 'One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+    const b = ['', '', 'Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+
+    if(num === 0) return 'Zero Rupees';
+
+    function inWords(n){
+      if(n < 20) return a[n];
+      if(n < 100) return b[Math.floor(n/10)] + (n%10 ? ' ' + a[n%10] : '');
+      if(n < 1000) return a[Math.floor(n/100)] + ' Hundred' + (n%100 ? ' ' + inWords(n%100) : '');
+      return '';
+    }
+
+    let str = '';
+    const crore = Math.floor(num / 10000000);
+    num = num % 10000000;
+    const lakh = Math.floor(num / 100000);
+    num = num % 100000;
+    const thousand = Math.floor(num / 1000);
+    num = num % 1000;
+    const hundred = num;
+
+    if(crore)   str += inWords(crore)   + ' Crore ';
+    if(lakh)    str += inWords(lakh)    + ' Lakh ';
+    if(thousand)str += inWords(thousand)+ ' Thousand ';
+    if(hundred) str += inWords(hundred);
+
+    return str.trim() + ' Rupees';
+  }
+
+})();
 </script>
-
-</body>
-</html>
+{% endblock %}

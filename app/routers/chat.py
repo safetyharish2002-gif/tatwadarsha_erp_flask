@@ -1,0 +1,247 @@
+# path: app/routers/chat.py
+
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, current_app, send_from_directory
+from app.routers.master import get_db
+import os
+from werkzeug.utils import secure_filename
+from functools import wraps
+
+chat_bp = Blueprint("chat", __name__)
+
+# ---------- Helpers ----------
+
+def chat_login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "chat_user_id" not in session:
+            return redirect(url_for("chat.chat_login"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def is_admin():
+    return session.get("chat_role") == "admin"
+
+
+def ensure_upload_folder():
+    upload_folder = os.path.join(current_app.root_path, "static", "chat_uploads")
+    os.makedirs(upload_folder, exist_ok=True)
+    return upload_folder
+
+
+# ---------- Login / Logout ----------
+
+@chat_bp.route("/chat/login", methods=["GET", "POST"])
+def chat_login():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT * FROM chat_users WHERE username=%s AND password=%s AND active=1",
+            (username, password)
+        )
+        user = cursor.fetchone()
+
+        if user:
+            session["chat_user_id"] = user["user_id"]
+            session["chat_username"] = user["username"]
+            session["chat_full_name"] = user.get("full_name") or user["username"]
+            session["chat_role"] = user["role"]
+
+            return redirect(url_for("chat.chat_room"))
+        else:
+            flash("Invalid username or password", "danger")
+
+    return render_template("chat_login.html")
+
+
+@chat_bp.route("/chat/logout")
+def chat_logout():
+    session.pop("chat_user_id", None)
+    session.pop("chat_username", None)
+    session.pop("chat_full_name", None)
+    session.pop("chat_role", None)
+    return redirect(url_for("chat.chat_login"))
+
+
+# ---------- Chat Room (List + Selected Request) ----------
+
+@chat_bp.route("/chat/room")
+@chat_login_required
+def chat_room():
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+
+    user_id = session["chat_user_id"]
+    role = session["chat_role"]
+
+    # All requests list (for left side)
+    if role == "admin":
+        cursor.execute("""
+            SELECT fr.*, 
+                   (SELECT COUNT(*) FROM finance_chat fc WHERE fc.request_id = fr.id) AS msg_count
+            FROM finance_requests fr
+            ORDER BY fr.created_at DESC
+        """)
+    else:
+        cursor.execute("""
+            SELECT fr.*, 
+                   (SELECT COUNT(*) FROM finance_chat fc WHERE fc.request_id = fr.id) AS msg_count
+            FROM finance_requests fr
+            WHERE fr.requester_id = %s
+            ORDER BY fr.created_at DESC
+        """, (user_id,))
+    requests_list = cursor.fetchall()
+
+    # Current selected request
+    req_id = request.args.get("request_id", type=int)
+    selected_request = None
+    chat_messages = []
+
+    if req_id:
+        cursor.execute("SELECT * FROM finance_requests WHERE id=%s", (req_id,))
+        selected_request = cursor.fetchone()
+
+        if selected_request:
+            cursor.execute("""
+                SELECT * FROM finance_chat 
+                WHERE request_id=%s
+                ORDER BY created_at ASC
+            """, (req_id,))
+            chat_messages = cursor.fetchall()
+
+    return render_template(
+        "chat_room.html",
+        requests_list=requests_list,
+        selected_request=selected_request,
+        chat_messages=chat_messages,
+        role=role
+    )
+
+
+# ---------- Create New Request (Accountant only) ----------
+
+@chat_bp.route("/chat/request/create", methods=["POST"])
+@chat_login_required
+def create_request():
+    if not session.get("chat_role") == "accountant":
+        flash("Only accountants can create requests.", "danger")
+        return redirect(url_for("chat.chat_room"))
+
+    amount = request.form.get("amount")
+    purpose = request.form.get("purpose", "").strip()
+    file = request.files.get("attachment")
+
+    if not amount or not purpose:
+        flash("Amount and purpose are required.", "danger")
+        return redirect(url_for("chat.chat_room"))
+
+    attachment_path = None
+    if file and file.filename:
+        upload_folder = ensure_upload_folder()
+        filename = secure_filename(file.filename)
+        save_path = os.path.join(upload_folder, filename)
+        file.save(save_path)
+        attachment_path = f"/static/chat_uploads/{filename}"
+
+    db = get_db()
+    cursor = db.cursor()
+
+    requester_id = session["chat_user_id"]
+    requester_name = session.get("chat_full_name") or session.get("chat_username")
+
+    cursor.execute("""
+        INSERT INTO finance_requests (requester_id, requester_name, amount, purpose, attachment)
+        VALUES (%s, %s, %s, %s, %s)
+    """, (requester_id, requester_name, amount, purpose, attachment_path))
+    db.commit()
+
+    flash("Request submitted successfully.", "success")
+    return redirect(url_for("chat.chat_room"))
+
+
+# ---------- Send Message in Chat ----------
+
+@chat_bp.route("/chat/send", methods=["POST"])
+@chat_login_required
+def chat_send():
+    request_id = request.form.get("request_id", type=int)
+    message_text = request.form.get("message", "").strip()
+    file = request.files.get("file")
+
+    if not request_id:
+        flash("No request selected.", "danger")
+        return redirect(url_for("chat.chat_room"))
+
+    file_url = None
+    if file and file.filename:
+        upload_folder = ensure_upload_folder()
+        filename = secure_filename(file.filename)
+        save_path = os.path.join(upload_folder, filename)
+        file.save(save_path)
+        file_url = f"/static/chat_uploads/{filename}"
+
+    if not message_text and not file_url:
+        flash("Message or file required.", "warning")
+        return redirect(url_for("chat.chat_room", request_id=request_id))
+
+    db = get_db()
+    cursor = db.cursor()
+
+    sender_id = session["chat_user_id"]
+    sender_name = session.get("chat_full_name") or session.get("chat_username")
+
+    cursor.execute("""
+        INSERT INTO finance_chat (request_id, sender_id, sender_name, message, file_url)
+        VALUES (%s, %s, %s, %s, %s)
+    """, (request_id, sender_id, sender_name, message_text, file_url))
+    db.commit()
+
+    return redirect(url_for("chat.chat_room", request_id=request_id))
+
+
+# ---------- Approve / Reject (Admin only) ----------
+
+@chat_bp.route("/chat/request/<int:req_id>/approve", methods=["POST"])
+@chat_login_required
+def approve_request(req_id):
+    if not is_admin():
+        flash("Only admin can approve.", "danger")
+        return redirect(url_for("chat.chat_room"))
+
+    remarks = request.form.get("remarks", "").strip()
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("""
+        UPDATE finance_requests
+        SET status='approved', remarks=%s
+        WHERE id=%s
+    """, (remarks, req_id))
+    db.commit()
+
+    flash("Request approved.", "success")
+    return redirect(url_for("chat.chat_room", request_id=req_id))
+
+
+@chat_bp.route("/chat/request/<int:req_id>/reject", methods=["POST"])
+@chat_login_required
+def reject_request(req_id):
+    if not is_admin():
+        flash("Only admin can reject.", "danger")
+        return redirect(url_for("chat.chat_room"))
+
+    remarks = request.form.get("remarks", "").strip()
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("""
+        UPDATE finance_requests
+        SET status='rejected', remarks=%s
+        WHERE id=%s
+    """, (remarks, req_id))
+    db.commit()
+
+    flash("Request rejected.", "warning")
+    return redirect(url_for("chat.chat_room", request_id=req_id))

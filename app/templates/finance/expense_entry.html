@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+{% block title %}Expense Entry | Tatwadarsha ERP{% endblock %}
+{% block content %}
+
+<div class="container-fluid py-3">
+
+  <!-- Header + Manage Categories Button -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="fw-bold text-dark mb-0">💸 Expense Entry</h4>
+    
+   <a href="{{ url_for('chat.chat_login') }}" class="btn btn-success btn-sm ms-2">
+  💬 Finance Request Chat
+</a>
+
+    <button class="btn btn-outline-primary btn-sm"
+            type="button"
+            data-bs-toggle="modal"
+            data-bs-target="#categoryModal">
+      ⚙ Manage Categories
+    </button>
+  </div>
+
+  <!-- Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="mt-1">
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+      {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <!-- EXPENSE FORM -->
+  <div class="glass-card shadow-sm rounded-4 p-3 mb-4">
+    <form action="" method="POST" enctype="multipart/form-data">
+      <input type="hidden" name="form_type" value="expense">
+
+      <div class="row g-3">
+
+        <div class="col-md-3">
+          <label class="form-label">Transaction Mode *</label>
+          <select id="transaction_mode" class="form-select" required>
+            <option value="">Select</option>
+            <option value="CASH">Cash</option>
+            <option value="BANK">Bank</option>
+          </select>
+        </div>
+
+        <div class="col-md-3" id="cashSection" style="display:none;">
+          <label class="form-label">Cash Account *</label>
+          <select id="cash_account" name="account_id" class="form-select">
+            {% for acc in accounts %}
+            {% if acc.account_type == 'CASH' %}
+            <option value="{{ acc.id }}">{{ acc.account_name }}</option>
+            {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3" id="bankSection" style="display:none;">
+          <label class="form-label">Bank Account *</label>
+          <select id="bank_account" name="account_id" class="form-select">
+            <option value="">Select Bank</option>
+            {% for acc in accounts %}
+            {% if acc.account_type == 'BANK' %}
+            <option value="{{ acc.id }}">{{ acc.account_name }}</option>
+            {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Expense Category *</label>
+          <select name="category" class="form-select" required>
+            <option value="">Select Category</option>
+            {% for cat in categories %}
+            <option value="{{ cat.category_name }}">{{ cat.category_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Amount *</label>
+          <input type="number" step="0.01" name="amount" class="form-control" required>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Date *</label>
+          <input type="date" name="tx_date" class="form-control" required>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Description</label>
+          <textarea name="description" class="form-control" rows="1"></textarea>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Attachment (Optional)</label>
+          <input type="file" name="attachment" class="form-control">
+        </div>
+
+      </div>
+
+      <button class="btn btn-danger mt-3">Save Expense</button>
+    </form>
+  </div>
+
+  <!-- FILTERS -->
+  <div class="glass-card shadow-sm rounded-4 p-3 mb-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label">From Date</label>
+        <input type="date" id="filterFrom" class="form-control form-control-sm">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">To Date</label>
+        <input type="date" id="filterTo" class="form-control form-control-sm">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Category</label>
+        <select id="filterCategory" class="form-select form-select-sm">
+          <option value="">All Categories</option>
+          {% for cat in categories %}
+          <option value="{{ cat.category_name }}">{{ cat.category_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <button class="btn btn-primary btn-sm me-2" onclick="applyFilter()">Filter</button>
+        <button class="btn btn-secondary btn-sm" onclick="resetFilter()">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPENSE TABLE -->
+  <h5 class="fw-bold text-dark mb-2">📋 Expense Transactions</h5>
+
+  <div class="table-responsive glass-card rounded-4 p-3 shadow-sm">
+    <table class="table table-bordered table-striped align-middle text-center mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>#</th>
+          <th>Date</th>
+          <th>Mode</th>
+          <th>Account</th>
+          <th>Category</th>
+          <th>Amount</th>
+          <th>Description</th>
+          <th>Attachment</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="expenseRows">
+        {% for row in expense_rows %}
+        <tr data-date="{{ row.tx_date }}" data-category="{{ row.category or '' }}">
+          <td>{{ loop.index }}</td>
+          <td>{{ row.tx_date }}</td>
+          <td class="text-primary fw-semibold">{{ row.transaction_mode }}</td>
+          <td>{{ row.account_name }}</td>
+          <td class="text-danger fw-semibold">{{ row.category or '-' }}</td>
+          <td class="fw-bold text-success">₹ {{ row.amount }}</td>
+          <td>{{ row.description or '-' }}</td>
+          <td>
+            {% if row.attachment_url %}
+            <a class="btn btn-sm btn-outline-primary"
+               href="{{ url_for('finance.finance_attachment', filename=row.attachment_url) }}"
+               target="_blank">📎 View</a>
+            {% else %}
+            -
+            {% endif %}
+          </td>
+          <td>
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-info"
+                      data-bs-toggle="modal"
+                      data-bs-target="#viewExpenseModal"
+                      data-expense='{{ row | tojson }}'>👁</button>
+
+              <button class="btn btn-warning"
+                      data-bs-toggle="modal"
+                      data-bs-target="#editExpenseModal"
+                      data-expense='{{ row | tojson }}'>✏</button>
+
+              <form action="{{ url_for('finance.delete_expense', tx_id=row.id) }}"
+                    method="POST"
+                    onsubmit="return confirm('Delete this expense?');">
+                <button class="btn btn-danger">🗑</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="9" class="text-muted">No expense records found.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- CATEGORY MODAL -->
+<div class="modal fade" id="categoryModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">⚙ Manage Expense Categories</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- Add Category Form -->
+        <form method="POST" class="d-flex mb-3 gap-2">
+          <input type="hidden" name="form_type" value="add_category">
+          <input type="text" name="category_name" class="form-control" placeholder="New Category..." required>
+          <button class="btn btn-success btn-sm">Add</button>
+        </form>
+
+        <!-- Category List -->
+        <table class="table table-sm table-bordered text-center align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="width:10%;">#</th>
+              <th>Category</th>
+              <th style="width:15%;">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cat in categories %}
+            <tr>
+              <td>{{ loop.index }}</td>
+              <td>{{ cat.category_name }}</td>
+              <td>
+                <form method="POST" onsubmit="return confirm('Delete this category?');">
+                  <input type="hidden" name="form_type" value="delete_category">
+                  <input type="hidden" name="category_id" value="{{ cat.id }}">
+                  <button class="btn btn-danger btn-sm">🗑</button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="3" class="text-muted">No categories added yet.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- VIEW EXPENSE MODAL -->
+<div class="modal fade" id="viewExpenseModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content glass-card p-3">
+      <div class="modal-header border-0">
+        <h5 class="modal-title">👁 View Expense</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="expenseDetails"></div>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT EXPENSE MODAL -->
+<div class="modal fade" id="editExpenseModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content glass-card p-3">
+      <div class="modal-header border-0">
+        <h5 class="modal-title">✏ Edit Expense</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <form method="POST" enctype="multipart/form-data" id="editExpenseForm">
+          <input type="hidden" name="form_type" value="update_expense">
+          <input type="hidden" name="expense_id" id="edit_expense_id">
+
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Account</label>
+              <select name="account_id" id="edit_account_id" class="form-select" required>
+                {% for acc in accounts %}
+                <option value="{{ acc.id }}">{{ acc.account_name }} ({{ acc.account_type }})</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Category</label>
+              <select name="category" id="edit_category" class="form-select" required>
+                {% for cat in categories %}
+                <option value="{{ cat.category_name }}">{{ cat.category_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Amount</label>
+              <input type="number" step="0.01" name="amount" id="edit_amount" class="form-control" required>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Date</label>
+              <input type="date" name="tx_date" id="edit_tx_date" class="form-control" required>
+            </div>
+
+            <div class="col-md-8">
+              <label class="form-label">Description</label>
+              <textarea name="description" id="edit_description" class="form-control" rows="2"></textarea>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label">Replace Attachment (optional)</label>
+              <input type="file" name="attachment" class="form-control">
+            </div>
+
+          </div>
+
+          <button class="btn btn-primary mt-3">Update Expense</button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<style>
+.glass-card {
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+}
+</style>
+
+<script>
+// Transaction Mode toggle (shows correct account select)
+document.getElementById("transaction_mode").addEventListener("change", function () {
+  const mode = this.value;
+  const cashSec = document.getElementById("cashSection");
+  const bankSec = document.getElementById("bankSection");
+  const cashSel = document.getElementById("cash_account");
+  const bankSel = document.getElementById("bank_account");
+
+  if (mode === "CASH") {
+    cashSec.style.display = "";
+    bankSec.style.display = "none";
+    cashSel.disabled = false;
+    bankSel.disabled = true;
+  } else if (mode === "BANK") {
+    bankSec.style.display = "";
+    cashSec.style.display = "none";
+    bankSel.disabled = false;
+    cashSel.disabled = true;
+  } else {
+    cashSec.style.display = "none";
+    bankSec.style.display = "none";
+    cashSel.disabled = true;
+    bankSel.disabled = true;
+  }
+});
+
+// Filters
+function applyFilter() {
+  const from = document.getElementById("filterFrom").value;
+  const to = document.getElementById("filterTo").value;
+  const category = (document.getElementById("filterCategory").value || "").toLowerCase();
+
+  const rows = document.querySelectorAll("#expenseRows tr");
+
+  rows.forEach(row => {
+    const rowDate = row.getAttribute("data-date");
+    const rowCat = (row.getAttribute("data-category") || "").toLowerCase();
+    let show = true;
+
+    if (from && rowDate < from) show = false;
+    if (to && rowDate > to) show = false;
+    if (category && rowCat !== category) show = false;
+
+    row.style.display = show ? "" : "none";
+  });
+}
+
+function resetFilter() {
+  document.getElementById("filterFrom").value = "";
+  document.getElementById("filterTo").value = "";
+  document.getElementById("filterCategory").value = "";
+  document.querySelectorAll("#expenseRows tr").forEach(r => r.style.display = "");
+}
+
+// VIEW MODAL
+document.getElementById("viewExpenseModal").addEventListener("show.bs.modal", event => {
+  const btn = event.relatedTarget;
+  const expense = JSON.parse(btn.getAttribute("data-expense"));
+  const d = document.getElementById("expenseDetails");
+
+  d.innerHTML = `
+    <p><strong>Date:</strong> ${expense.tx_date}</p>
+    <p><strong>Mode:</strong> ${expense.transaction_mode}</p>
+    <p><strong>Account:</strong> ${expense.account_name || ''}</p>
+    <p><strong>Category:</strong> ${expense.category || '-'}</p>
+    <p><strong>Amount:</strong> ₹ ${expense.amount}</p>
+    <p><strong>Description:</strong> ${expense.description || '-'}</p>
+    ${expense.attachment_url
+      ? `<a href="${window.location.origin}/finance/attachment/${expense.attachment_url}" 
+            class="btn btn-sm btn-outline-primary" target="_blank">📎 View Attachment</a>`
+      : `<p class="text-muted">No attachment</p>`}
+  `;
+});
+
+// EDIT MODAL
+document.getElementById("editExpenseModal").addEventListener("show.bs.modal", event => {
+  const btn = event.relatedTarget;
+  const expense = JSON.parse(btn.getAttribute("data-expense"));
+
+  document.getElementById("edit_expense_id").value = expense.id;
+  document.getElementById("edit_amount").value = expense.amount;
+  document.getElementById("edit_tx_date").value = expense.tx_date;
+  document.getElementById("edit_description").value = expense.description || "";
+
+  // account select
+  const accSel = document.getElementById("edit_account_id");
+  if (accSel) accSel.value = expense.account_id;
+
+  // category select
+  const catSel = document.getElementById("edit_category");
+  if (catSel && expense.category) catSel.value = expense.category;
+});
+</script>
+
+{% endblock %}

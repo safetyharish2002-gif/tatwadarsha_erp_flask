@@ -52,7 +52,10 @@
           <input type="hidden" id="pm_assigned_id">
           <input type="hidden" id="pm_head_id">
 
-          <div class="mb-2"><label class="form-label small">Fee Head</label><div id="pm_head_name" class="fw-bold"></div></div>
+          <div class="mb-2">
+            <label class="form-label small">Fee Head</label>
+            <div id="pm_head_name" class="fw-bold"></div>
+          </div>
           <div class="row g-2">
             <div class="col-6">
               <label class="form-label small">Total Assigned</label>
@@ -81,6 +84,14 @@
             <div class="col-12">
               <label class="form-label small">Payment Mode</label>
               <select id="pm_mode" name="mode" class="form-select form-select-sm"></select>
+            </div>
+
+            <!-- 🚨 NEW: Deposit To (Cash/Bank account) -->
+            <div class="col-12 mt-2">
+              <label class="form-label small">Deposit To</label>
+              <select id="pm_deposit_to" class="form-select form-select-sm" required>
+                <option value="">Select Account</option>
+              </select>
             </div>
 
             <!-- dynamic area for mode-specific fields -->
@@ -221,7 +232,11 @@
   function renderLedgerAndFees(groups){
     const ledger = $('#ledgerArea');
     let totalAssigned = 0, totalPaid = 0, totalBalance = 0;
-    (groups||[]).forEach(g => (g.items||[]).forEach(it => { totalAssigned += Number(it.assigned_amount||0); totalPaid += Number(it.paid_amount||0); totalBalance += Number(it.balance||0); }));
+    (groups||[]).forEach(g => (g.items||[]).forEach(it => {
+      totalAssigned += Number(it.assigned_amount||0);
+      totalPaid += Number(it.paid_amount||0);
+      totalBalance += Number(it.balance||0);
+    }));
 
     let ledgerHtml = '';
     if(!groups || groups.length===0){
@@ -322,13 +337,18 @@
     const def = paymentModes.find(m => m.id === selectedId);
     const container = $('#pm_mode_fields');
     container.innerHTML = '';
-    function addInput(name, label, type='text'){ container.insertAdjacentHTML('beforeend', `<div class="mb-2"><label class="form-label small">${label}</label><input id="pm_field_${name}" name="${name}" class="form-control form-control-sm" ${type==='date' ? 'type="date"' : ''}></div>`); }
+    function addInput(name, label, type='text'){
+      container.insertAdjacentHTML('beforeend',
+        `<div class="mb-2"><label class="form-label small">${label}</label><input id="pm_field_${name}" name="${name}" class="form-control form-control-sm" ${type==='date' ? 'type="date"' : ''}></div>`
+      );
+    }
     if(!def){
       addInput('remark_extra','Remark');
     } else {
       let flds = [];
       try{ flds = typeof def.fields === 'string' ? JSON.parse(def.fields || '[]') : (def.fields || []); } catch(e){ flds = []; }
-      if(!flds.length) addInput('remark_extra','Remark'); else flds.forEach(fn => addInput(fn, fn.replace(/_/g,' ').toUpperCase(), fn.includes('date') ? 'date' : 'text'));
+      if(!flds.length) addInput('remark_extra','Remark');
+      else flds.forEach(fn => addInput(fn, fn.replace(/_/g,' ').toUpperCase(), fn.includes('date') ? 'date' : 'text'));
     }
   });
 
@@ -341,21 +361,28 @@
     const mode_id = $('#pm_mode').value;
     const date = $('#pm_date').value;
     const remark = $('#pm_remark').value;
+    const account_id = $('#pm_deposit_to').value;   // 🔥 selected Cash/Bank account
 
     if(!amount || amount <= 0){ alert('Enter amount'); return; }
     if(!mode_id){ alert('Select payment mode'); return; }
+    if(!account_id){ alert('Select account (Deposit To)'); return; }  // 🔥 mandatory
 
-    // gather mode meta fields
+    // gather mode meta fields (UTR, etc.)
     const meta = {};
-    $$('#pm_mode_fields input, #pm_mode_fields textarea').forEach(inp => { const name = inp.name || inp.id.replace('pm_field_',''); meta[name] = inp.value; });
+    $$('#pm_mode_fields input, #pm_mode_fields textarea').forEach(inp => {
+      const name = inp.name || inp.id.replace('pm_field_','');
+      meta[name] = inp.value;
+    });
 
     const payload = {
       assigned_fee_id: assigned_id,
       student_id: student_id,
       amount: amount,
       payment_mode_id: mode_id,
-      reference_no: meta.reference_no || meta.utr || '',
-      paid_on: date
+      paid_on: date,
+      remark: remark,
+      account_id: account_id,  // 🔥 send to backend for finance_transactions
+      meta: meta               // 🔥 send full meta so backend can pick UTR, etc.
     };
 
     try {
@@ -397,7 +424,9 @@
     $('#pm_edit_id').value = '';
     $('#pm_mode_name').value = '';
     $('#pm_file').value = '';
-    ['fld_remark','fld_utr','fld_payee','fld_bank','fld_cheque_no','fld_cheque_date','fld_deposit_bank','fld_deposit_date','fld_refno'].forEach(id => { if($( '#' + id)) $('#' + id).checked = false; });
+    ['fld_remark','fld_utr','fld_payee','fld_bank','fld_cheque_no','fld_cheque_date','fld_deposit_bank','fld_deposit_date','fld_refno'].forEach(id => {
+      if($('#' + id)) $('#' + id).checked = false;
+    });
     await loadPaymentModes();
     const modal = new bootstrap.Modal(document.getElementById('pmMasterModal'));
     modal.show();
@@ -438,7 +467,7 @@
         const el = $('#' + idchk);
         if(el) el.checked = flds.includes(fn);
       });
-      // Note: file input cannot be populated for security — leave file blank (user can reupload to change)
+      // Note: file input cannot be populated for security — leave file blank
     }));
 
     $$('.pm-del').forEach(b => b.addEventListener('click', async ev => {
@@ -498,7 +527,10 @@
     $('#pm_edit_id').value = '';
     $('#pm_mode_name').value = '';
     $('#pm_file').value = '';
-    ['fld_remark','fld_utr','fld_payee','fld_bank','fld_cheque_no','fld_cheque_date','fld_deposit_bank','fld_deposit_date','fld_refno'].forEach(id => { const el = $('#' + id); if(el) el.checked = false; });
+    ['fld_remark','fld_utr','fld_payee','fld_bank','fld_cheque_no','fld_cheque_date','fld_deposit_bank','fld_deposit_date','fld_refno'].forEach(id => {
+      const el = $('#' + id);
+      if(el) el.checked = false;
+    });
   });
 
   // hide suggestions when clicking outside
@@ -507,8 +539,25 @@
     if(box && !box.contains(ev.target) && ev.target !== $('#studentSearch')) box.style.display = 'none';
   });
 
+  // 🔥 Load finance accounts for "Deposit To"
+  async function loadAccounts() {
+    try {
+      const res = await fetch('/finance/api/accounts');
+      const j = await res.json();
+      const sel = $('#pm_deposit_to');
+      sel.innerHTML = '<option value="">Select Account</option>';
+      (j.accounts || []).forEach(acc => {
+        const op = document.createElement('option');
+        op.value = acc.id;
+        op.textContent = acc.account_name + " — " + acc.account_type;
+        sel.appendChild(op);
+      });
+    } catch(e){ console.error(e); }
+  }
+
   // initial load
   loadPaymentModes();
+  loadAccounts();
 
 })();
 </script>

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Cash & Bank Master | Tatwadarsha ERP{% endblock %}
+{% block content %}
+
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="fw-bold text-dark mb-0">🏦 Cash & Bank Master</h4>
+  </div>
+
+  <!-- Add Form -->
+  <div class="glass-card shadow-sm p-3 mb-4 rounded-4">
+    <form method="POST" action="{{ url_for('finance.add_account') }}" id="formAccount">
+      <div class="row g-3">
+
+        <div class="col-md-3">
+          <label class="form-label">Account Type *</label>
+          <select class="form-select" name="account_type" id="atype" required>
+            <option value="CASH">Cash</option>
+            <option value="BANK">Bank</option>
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Account Name *</label>
+          <input type="text" name="account_name" class="form-control" required>
+        </div>
+
+        <div class="col-md-3 bankOnly">
+          <label class="form-label">Holder Name</label>
+          <input type="text" name="account_holder_name" class="form-control">
+        </div>
+
+        <div class="col-md-3 bankOnly">
+          <label class="form-label">Account No</label>
+          <input type="text" name="account_number" class="form-control">
+        </div>
+
+        <div class="col-md-3 bankOnly">
+          <label class="form-label">IFSC</label>
+          <input type="text" name="ifsc_code" class="form-control">
+        </div>
+
+        <div class="col-md-3 bankOnly">
+          <label class="form-label">Branch</label>
+          <input type="text" name="branch_name" class="form-control">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Opening Balance *</label>
+          <input type="number" name="opening_balance" class="form-control" required>
+        </div>
+
+      </div>
+      <button class="btn btn-success mt-3">➕ Add</button>
+    </form>
+  </div>
+
+  {% if accounts %}
+  <div class="table-responsive glass-card rounded-4 p-3 shadow-sm">
+    <table class="table table-hover align-middle text-center">
+      <thead style="background:#004085; color:#fff;">
+        <tr>
+          <th>#</th>
+          <th>Type</th>
+          <th>Name</th>
+          <th>Holder</th>
+          <th>Acc No</th>
+          <th>IFSC</th>
+          <th>Branch</th>
+          <th>Opening Bal</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in accounts %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ a.account_type }}</td>
+          <td>{{ a.account_name }}</td>
+          <td>{{ a.account_holder_name or '-' }}</td>
+          <td>{{ a.account_number or '-' }}</td>
+          <td>{{ a.ifsc_code or '-' }}</td>
+          <td>{{ a.branch_name or '-' }}</td>
+          <td>{{ a.opening_balance }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function updateFields() {
+  const isBank = document.getElementById("atype").value === "BANK";
+  document.querySelectorAll(".bankOnly").forEach(el =>
+    el.style.display = isBank ? "block" : "none"
+  );
+}
+document.getElementById("atype").addEventListener("change", updateFields);
+updateFields();
+</script>
+
+{% endblock %}
