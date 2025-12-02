@@ -1,7 +1,7 @@
 from app.routers.master import get_db
 from flask import session, jsonify
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 # FILE: app/routers/finance.py
 
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify, flash, session
@@ -91,34 +91,6 @@ def add_account():
     flash("✔ Account Added Successfully!", "success")
     return redirect(url_for("finance.cash_bank_master"))
 
-# -----------------------
-# FINANCE ACCOUNTS API
-# -----------------------
-@finance_bp.route("/finance/api/accounts", methods=["GET"])
-def api_finance_accounts():
-    if not is_logged_in():
-        return jsonify({"success": False, "message": "Unauthorized"}), 401
-
-    try:
-        conn = get_mysql_connection()
-        cur = conn.cursor(dictionary=True)
-
-        cur.execute("""
-            SELECT id, account_name, account_type 
-            FROM bank_accounts 
-            ORDER BY account_name
-        """)
-        rows = cur.fetchall()
-
-        cur.close()
-        conn.close()
-
-        return jsonify({"success": True, "accounts": rows})
-
-    except Exception as e:
-        print("❌ Error loading accounts:", e)
-        return jsonify({"success": False, "message": str(e)})
-
 # ---------------------------------------
 # File upload helpers
 # ---------------------------------------
@@ -183,7 +155,7 @@ def bank_deposit():
             attachment_url = filename
 
         try:
-            # Insert Transaction
+            # Insert Transaction (DEPOSIT to BANK)
             cur.execute("""
                 INSERT INTO finance_transactions
                 (id, account_id, transaction_mode, transaction_type, amount,
@@ -191,12 +163,7 @@ def bank_deposit():
                 VALUES (%s, %s, 'BANK', 'DEPOSIT', %s, %s, %s, %s)
             """, (tx_id, account_id, amount, description, attachment_url, tx_date))
 
-            # Update Bank Balance
-            cur.execute("""
-                UPDATE bank_accounts SET opening_balance = opening_balance + %s
-                WHERE id = %s
-            """, (amount, account_id))
-
+            # ❌ DO NOT TOUCH opening_balance HERE
             conn.commit()
             flash("💰 Bank Deposit Recorded Successfully!", "success")
             return redirect(url_for("finance.bank_deposit"))
@@ -247,8 +214,9 @@ def bank_deposit():
         from_date=from_date,
         to_date=to_date
     )
+
 # ---------------------------------------
-# Delete Bank Deposit (revert balance)
+# Delete Bank Deposit (no opening_balance revert)
 # ---------------------------------------
 @finance_bp.route("/finance/bank-deposit/delete/<string:tx_id>", methods=["POST"])
 def delete_deposit(tx_id):
@@ -269,17 +237,7 @@ def delete_deposit(tx_id):
         if not tx:
             flash("Record not found!", "danger")
         else:
-            account_id = tx["account_id"]
-            amount = float(tx["amount"])
-
-            # Revert bank balance
-            cur.execute("""
-                UPDATE bank_accounts
-                SET opening_balance = opening_balance - %s
-                WHERE id=%s
-            """, (amount, account_id))
-
-            # Delete record
+            # Just delete the transaction; balances come from ledger logic
             cur.execute("DELETE FROM finance_transactions WHERE id=%s", (tx_id,))
             conn.commit()
             flash("🗑 Deposit deleted successfully!", "success")
@@ -331,10 +289,12 @@ def self_withdrawal():
         if file and allowed_file(file.filename):
             filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
             upload_path = os.path.join(current_app.config["UPLOAD_FOLDER_FINANCE"], filename)
+            os.makedirs(upload_path.rsplit(os.sep, 1)[0], exist_ok=True)
             file.save(upload_path)
             attachment_url = filename
 
         try:
+            # Record BANK side withdrawal (money moving out of bank)
             cur.execute("""
                 INSERT INTO finance_transactions
                 (account_id, transaction_mode, transaction_type, amount,
@@ -342,15 +302,7 @@ def self_withdrawal():
                 VALUES (%s, 'BANK', 'WITHDRAWAL', %s, %s, %s, %s)
             """, (account_id, amount, description, attachment_url, tx_date))
 
-            cur.execute(
-                "UPDATE bank_accounts SET opening_balance = opening_balance - %s WHERE id = %s",
-                (amount, account_id)
-            )
-            cur.execute(
-                "UPDATE bank_accounts SET opening_balance = opening_balance + %s WHERE id = %s",
-                (amount, cash_account_id)
-            )
-
+            # ❌ Do not touch opening_balance of BANK or CASH here
             conn.commit()
             flash("💸 Cash received from bank successfully!", "success")
             return redirect(url_for("finance.self_withdrawal"))
@@ -403,8 +355,9 @@ def self_withdrawal():
         from_date=from_date,
         to_date=to_date
     )
+
 # ---------------------------------------
-# Delete Self Withdrawal (revert balance)
+# Delete Self Withdrawal (no opening_balance revert)
 # ---------------------------------------
 @finance_bp.route("/finance/self-withdrawal/delete/<string:tx_id>", methods=["POST"])
 def delete_withdrawal(tx_id):
@@ -425,24 +378,7 @@ def delete_withdrawal(tx_id):
         if not tx:
             flash("Record not found!", "danger")
         else:
-            account_id = tx["account_id"]
-            amount = float(tx["amount"])
-
-            # Revert BANK balance +
-            cur.execute("""
-                UPDATE bank_accounts
-                SET opening_balance = opening_balance + %s
-                WHERE id=%s
-            """, (amount, account_id))
-
-            # Revert CASH balance -
-            cur.execute("""
-                UPDATE bank_accounts
-                SET opening_balance = opening_balance - %s
-                WHERE account_type='CASH'
-            """, (amount,))
-
-            # Finally remove record
+            # Only delete transaction; balances handled via reports
             cur.execute("DELETE FROM finance_transactions WHERE id=%s", (tx_id,))
             conn.commit()
             flash("🗑 Withdrawal deleted successfully!", "success")
@@ -525,8 +461,6 @@ def expense_entry():
             if not old:
                 flash("Expense not found for update.", "danger")
             else:
-                old_account_id = old["account_id"]
-                old_amount = float(old["amount"] or 0)
                 old_attach = old["attachment_url"]
 
                 # determine transaction mode from new account
@@ -546,43 +480,13 @@ def expense_entry():
                         upload_path = os.path.join(
                             current_app.config["UPLOAD_FOLDER_FINANCE"], filename
                         )
+                        os.makedirs(upload_path.rsplit(os.sep, 1)[0], exist_ok=True)
                         file.save(upload_path)
                         new_attach = filename
                     else:
                         new_attach = old_attach
 
-                    # Adjust balances
-                    if new_account_id == old_account_id:
-                        # revert old, apply new
-                        cur.execute(
-                            """
-                            UPDATE bank_accounts
-                            SET opening_balance = opening_balance + %s - %s
-                            WHERE id=%s
-                        """,
-                            (old_amount, new_amount, old_account_id),
-                        )
-                    else:
-                        # revert old on old account
-                        cur.execute(
-                            """
-                            UPDATE bank_accounts
-                            SET opening_balance = opening_balance + %s
-                            WHERE id=%s
-                        """,
-                            (old_amount, old_account_id),
-                        )
-                        # apply new on new account
-                        cur.execute(
-                            """
-                            UPDATE bank_accounts
-                            SET opening_balance = opening_balance - %s
-                            WHERE id=%s
-                        """,
-                            (new_amount, new_account_id),
-                        )
-
-                    # Update transaction row
+                    # ❌ Do NOT adjust opening_balance anymore; only update transaction
                     cur.execute(
                         """
                         UPDATE finance_transactions
@@ -642,10 +546,11 @@ def expense_entry():
                     upload_path = os.path.join(
                         current_app.config["UPLOAD_FOLDER_FINANCE"], filename
                     )
+                    os.makedirs(upload_path.rsplit(os.sep, 1)[0], exist_ok=True)
                     file.save(upload_path)
                     attachment_url = filename
 
-                # insert transaction
+                # insert transaction only
                 cur.execute(
                     """
                     INSERT INTO finance_transactions
@@ -664,16 +569,7 @@ def expense_entry():
                     ),
                 )
 
-                # reduce balance
-                cur.execute(
-                    """
-                    UPDATE bank_accounts
-                    SET opening_balance = opening_balance - %s
-                    WHERE id=%s
-                """,
-                    (amount, account_id),
-                )
-
+                # ❌ Do NOT reduce opening_balance here
                 conn.commit()
                 flash("💸 Expense Entry Saved!", "success")
 
@@ -732,7 +628,7 @@ def expense_entry():
 
 
 # ---------------------------------------
-# Delete Expense (revert balance)
+# Delete Expense (no opening_balance revert)
 # ---------------------------------------
 @finance_bp.route("/finance/expense/delete/<int:tx_id>", methods=["POST"])
 def delete_expense(tx_id):
@@ -759,23 +655,10 @@ def delete_expense(tx_id):
         if not row:
             flash("Expense not found.", "danger")
         else:
-            account_id = row["account_id"]
-            amount = float(row["amount"] or 0)
-
-            # revert balance
-            cur.execute(
-                """
-                UPDATE bank_accounts
-                SET opening_balance = opening_balance + %s
-                WHERE id=%s
-            """,
-                (amount, account_id),
-            )
-
-            # delete transaction
+            # Just delete; balance comes from ledger logic
             cur.execute("DELETE FROM finance_transactions WHERE id=%s", (tx_id,))
             conn.commit()
-            flash("🗑 Expense deleted and balance updated.", "success")
+            flash("🗑 Expense deleted.", "success")
 
     except Exception as e:
         conn.rollback()
@@ -887,7 +770,7 @@ def income_entry():
 
                 tx_id = uuid.uuid4().hex
 
-                # insert transaction as INCOME
+                # insert transaction as INCOME only
                 cur.execute("""
                     INSERT INTO finance_transactions
                     (id, account_id, transaction_mode, transaction_type, amount, category,
@@ -895,13 +778,7 @@ def income_entry():
                     VALUES (%s, %s, %s, 'INCOME', %s, %s, %s, %s, %s)
                 """, (tx_id, account_id, mode, amount, category_name, description, attachment_url, tx_date))
 
-                # increase balance
-                cur.execute("""
-                    UPDATE bank_accounts
-                    SET opening_balance = opening_balance + %s
-                    WHERE id=%s
-                """, (amount, account_id))
-
+                # ❌ Do NOT update opening_balance here
                 conn.commit()
                 flash("💰 Income Entry Saved!", "success")
 
@@ -977,7 +854,7 @@ def income_entry():
 
 
 # ---------------------------------------
-# Delete Income (revert balance)
+# Delete Income (no opening_balance revert)
 # ---------------------------------------
 @finance_bp.route("/finance/income/delete/<string:tx_id>", methods=["POST"])
 def delete_income(tx_id):
@@ -1001,20 +878,10 @@ def delete_income(tx_id):
         if not row:
             flash("Income record not found.", "danger")
         else:
-            account_id = row["account_id"]
-            amount = float(row["amount"] or 0)
-
-            # revert balance (account - amount)
-            cur.execute("""
-                UPDATE bank_accounts
-                SET opening_balance = opening_balance - %s
-                WHERE id=%s
-            """, (amount, account_id))
-
-            # delete transaction
+            # only delete transaction; balances come from ledger logic
             cur.execute("DELETE FROM finance_transactions WHERE id=%s", (tx_id,))
             conn.commit()
-            flash("🗑 Income deleted and balance updated.", "success")
+            flash("🗑 Income deleted.", "success")
 
     except Exception as e:
         conn.rollback()
@@ -1024,3 +891,303 @@ def delete_income(tx_id):
         conn.close()
 
     return redirect(url_for("finance.income_entry"))
+
+# ---------------------------------------
+# 📊 Finance Reports – Main Page
+# ---------------------------------------
+@finance_bp.route("/finance/reports")
+def finance_reports_page():
+    if not is_logged_in():
+        return redirect(url_for("login"))
+    return render_template("finance/ledger_reports.html")
+
+
+# ---------------------------------------
+# 📌 API – Accounts for dropdown
+#    (IF you already have this route, do NOT duplicate it)
+# ---------------------------------------
+@finance_bp.route("/finance/api/accounts", methods=["GET"])
+def api_finance_accounts():
+    if not is_logged_in():
+        return jsonify({"success": False}), 401
+
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    try:
+        conn.ping(reconnect=True)
+    except:
+        conn = get_mysql_connection()
+        cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT id, account_name, account_type
+        FROM bank_accounts
+        ORDER BY account_type, account_name
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "accounts": rows})
+
+# ---------------------------------------
+# 📌 API – Expense Categories for Filters
+# ---------------------------------------
+@finance_bp.route("/finance/api/expense-categories")
+def api_expense_categories():
+    if not is_logged_in():
+        return jsonify({"success": False}), 401
+
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT id, category_name AS name
+        FROM expense_categories
+        ORDER BY category_name
+    """)
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return jsonify({"success": True, "categories": rows})
+
+
+# ---------------------------------------
+# 📌 API – Income Categories for Filters
+# ---------------------------------------
+@finance_bp.route("/finance/api/income-categories")
+def api_income_categories():
+    if not is_logged_in():
+        return jsonify({"success": False}), 401
+
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT id, category_name AS name
+        FROM income_categories
+        WHERE is_active = 1
+        ORDER BY category_name
+    """)
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return jsonify({"success": True, "categories": rows})
+
+# ---------------------------------------
+# 🧮 Helper – Build ledger response
+# ---------------------------------------
+def build_ledger_response(rows, opening_balance):
+    """
+    Correct opening balance handling:
+    - Start from actual DB stored opening_balance
+    - DO NOT add any first transaction inside filtered date range into opening
+    """
+    if opening_balance is None:
+        opening_balance = 0.0
+
+    balance = float(opening_balance)
+    total_in = 0.0
+    total_out = 0.0
+
+    for r in rows:
+        amt = float(r.get("amount") or 0)
+        tx_type = (r.get("transaction_type") or "").upper()
+
+        # Format display date
+        txd = r.get("tx_date")
+        try:
+            if isinstance(txd, (datetime, date)):
+                r["display_date"] = txd.strftime("%d-%m-%Y")
+            else:
+                r["display_date"] = datetime.strptime(str(txd), "%Y-%m-%d").strftime("%d-%m-%Y")
+        except:
+            r["display_date"] = str(txd)
+
+        # Apply as running transactions (NOT opening)
+        if tx_type in ("INCOME", "DEPOSIT"):
+            total_in += amt
+            balance += amt
+            r["in_amount"] = amt
+            r["out_amount"] = 0.0
+        else:
+            total_out += amt
+            balance -= amt
+            r["in_amount"] = 0.0
+            r["out_amount"] = amt
+
+        r["running_balance"] = balance
+
+    return jsonify({
+        "opening_balance": round(opening_balance, 2),
+        "total_in": round(total_in, 2),
+        "total_out": round(total_out, 2),
+        "closing_balance": round(balance, 2),
+        "rows": rows
+    })
+
+# ---------------------------------------
+# 💵 CASH report API
+# ---------------------------------------
+@finance_bp.route("/finance/api/cash-report")
+def api_cash_report():
+    if not is_logged_in():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    account_id = request.args.get("account_id")
+    from_date = request.args.get("from_date")
+    to_date = request.args.get("to_date")
+    tx_type = (request.args.get("tx_type") or "ALL").upper()
+    income_cat = request.args.get("income_cat") or "ALL"
+    expense_cat = request.args.get("expense_cat") or "ALL"
+
+    if not account_id or not from_date or not to_date:
+        return jsonify({"error": "Missing filters"}), 400
+
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    try:
+        conn.ping(reconnect=True)
+    except:
+        conn = get_mysql_connection()
+        cur = conn.cursor(dictionary=True)
+
+    # Opening balance (static opening_balance + transactions BEFORE from_date)
+    cur.execute("""
+    SELECT 
+        COALESCE(ba.opening_balance, 0)
+        +
+        COALESCE(SUM(
+            CASE 
+                WHEN ft.transaction_type IN ('INCOME','DEPOSIT') THEN ft.amount
+                ELSE -ft.amount
+            END
+        ), 0) AS opening
+    FROM bank_accounts ba
+    LEFT JOIN finance_transactions ft 
+        ON ba.id = ft.account_id
+        AND ft.transaction_mode='CASH'
+        AND ft.tx_date < %s
+    WHERE ba.id=%s
+    """, (from_date, account_id))
+
+    opening = float(cur.fetchone()["opening"] or 0)
+
+    # Transactions
+    query = """
+        SELECT id, tx_date, transaction_type, amount, description,
+               receipt_no, payment_mode, category, income_category,
+               utr_no, attachment_url
+        FROM finance_transactions
+        WHERE transaction_mode='CASH'
+          AND account_id=%s
+          AND tx_date BETWEEN %s AND %s
+    """
+    params = [account_id, from_date, to_date]
+
+    if tx_type != "ALL":
+        query += " AND transaction_type=%s"
+        params.append(tx_type)
+
+    if tx_type == "INCOME" and income_cat != "ALL":
+        query += " AND income_category=%s"
+        params.append(income_cat)
+
+    if tx_type == "EXPENSE" and expense_cat != "ALL":
+        query += " AND category=%s"
+        params.append(expense_cat)
+
+    query += " ORDER BY tx_date ASC, id ASC"
+
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    return build_ledger_response(rows, opening)
+
+
+# ---------------------------------------
+# 🏦 BANK report API
+# ---------------------------------------
+@finance_bp.route("/finance/api/bank-report")
+def api_bank_report():
+    if not is_logged_in():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    account_id = request.args.get("account_id")
+    from_date = request.args.get("from_date")
+    to_date = request.args.get("to_date")
+    tx_type = (request.args.get("tx_type") or "ALL").upper()
+    income_cat = request.args.get("income_cat") or "ALL"
+    expense_cat = request.args.get("expense_cat") or "ALL"
+
+    if not account_id or not from_date or not to_date:
+        return jsonify({"error": "Missing filters"}), 400
+
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    try:
+        conn.ping(reconnect=True)
+    except:
+        conn = get_mysql_connection()
+        cur = conn.cursor(dictionary=True)
+
+    # Opening balance (static opening_balance + transactions BEFORE from_date)
+    cur.execute("""
+    SELECT 
+        COALESCE(ba.opening_balance, 0)
+        +
+        COALESCE(SUM(
+            CASE 
+                WHEN ft.transaction_type IN ('INCOME','DEPOSIT') THEN ft.amount
+                ELSE -ft.amount
+            END
+        ), 0) AS opening
+    FROM bank_accounts ba
+    LEFT JOIN finance_transactions ft 
+        ON ba.id = ft.account_id
+        AND ft.transaction_mode='BANK'
+        AND ft.tx_date < %s
+    WHERE ba.id=%s
+    """, (from_date, account_id))
+
+    opening = float(cur.fetchone()["opening"] or 0)
+
+    # Transactions
+    query = """
+        SELECT id, tx_date, transaction_type, amount, description,
+               receipt_no, payment_mode, category, income_category,
+               utr_no, attachment_url
+        FROM finance_transactions
+        WHERE transaction_mode='BANK'
+          AND account_id=%s
+          AND tx_date BETWEEN %s AND %s
+    """
+    params = [account_id, from_date, to_date]
+
+    if tx_type != "ALL":
+        query += " AND transaction_type=%s"
+        params.append(tx_type)
+
+    if tx_type == "INCOME" and income_cat != "ALL":
+        query += " AND income_category=%s"
+        params.append(income_cat)
+
+    if tx_type == "EXPENSE" and expense_cat != "ALL":
+        query += " AND category=%s"
+        params.append(expense_cat)
+
+    query += " ORDER BY tx_date ASC, id ASC"
+
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    return build_ledger_response(rows, opening)

@@ -1,0 +1,455 @@
+{% extends "base.html" %}
+{% block title %}Finance Ledger Reports{% endblock %}
+
+{% block content %}
+<style>
+  /* Attachment badges */
+  .badge-viewed {
+    background-color: #dc3545 !important;  /* red */
+  }
+  .badge-not-viewed {
+    background-color: #198754 !important;  /* green */
+  }
+
+  /* Ledger card + table look */
+  .ledger-card {
+    border-radius: 18px;
+    border: 1px solid #e5e7eb;
+  }
+  .ledger-card .card-body {
+    padding: 1.2rem 1.4rem;
+  }
+
+  .ledger-table {
+    font-size: 0.86rem;
+  }
+  .ledger-table thead th {
+    background: #f9fafb;
+    font-weight: 600;
+    border-bottom: 2px solid #e5e7eb !important;
+    white-space: nowrap;
+  }
+  .ledger-table tbody tr:nth-child(even) {
+    background-color: #fcfcfd;
+  }
+  .ledger-table td {
+    vertical-align: middle;
+    padding: 0.45rem 0.5rem;
+  }
+
+  .ledger-summary {
+    border-top: 1px dashed #e5e7eb;
+    padding-top: 0.4rem;
+    margin-top: 0.4rem;
+    font-size: 0.82rem;
+  }
+
+  /* Filters */
+  .filter-card {
+    border-radius: 18px;
+    border: 1px solid #e5e7eb;
+  }
+  .filter-card .form-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #4b5563;
+  }
+  .filter-card .form-select,
+  .filter-card .form-control {
+    font-size: 0.85rem;
+  }
+
+  /* Print optimisation */
+  @media print {
+    body * {
+      visibility: hidden;
+    }
+    .card,
+    .card * {
+      visibility: visible;
+    }
+    .btn,
+    .nav,
+    .filter-card {
+      display: none !important;
+    }
+    .card {
+      box-shadow: none !important;
+      border: none !important;
+    }
+  }
+</style>
+
+<div class="container-fluid py-3">
+  <h4 class="fw-bold mb-1">📊 Finance Ledger Reports</h4>
+  <p class="text-muted small mb-3">Cash book &amp; bank statement with running balance</p>
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs mb-3" id="reportTabs">
+    <li class="nav-item">
+      <button class="nav-link active" data-type="CASH" type="button">Cash Report</button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-type="BANK" type="button">Bank Report</button>
+    </li>
+  </ul>
+
+  <!-- Filter Card -->
+  <div class="card shadow-sm mb-3 filter-card">
+    <div class="card-body">
+      <div class="row g-3 align-items-end">
+
+        <div class="col-md-3">
+          <label class="form-label mb-1">Account</label>
+          <select id="accountSelect" class="form-select"></select>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label mb-1">From Date</label>
+          <input type="date" id="fromDate" class="form-control">
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label mb-1">To Date</label>
+          <input type="date" id="toDate" class="form-control">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label mb-1">Transaction Type</label>
+          <select id="txType" class="form-select">
+            <option value="ALL">All (Deposit / Withdrawal / Income / Expense)</option>
+            <option value="INCOME">Income Entry</option>
+            <option value="DEPOSIT">Bank Deposit</option>
+            <option value="WITHDRAWAL">Self Withdrawal</option>
+            <option value="EXPENSE">Expense Entry</option>
+          </select>
+        </div>
+
+        <div class="col-md-2 d-grid">
+          <button class="btn btn-primary" onclick="loadReport()">Search</button>
+        </div>
+
+        <!-- Income Category -->
+        <div class="col-md-3" id="incomeCategoryDiv" style="display:none;">
+          <label class="form-label mb-1">Income Category</label>
+          <select id="incomeCategory" class="form-select">
+            <option value="ALL">All</option>
+          </select>
+        </div>
+
+        <!-- Expense Category -->
+        <div class="col-md-3" id="expenseCategoryDiv" style="display:none;">
+          <label class="form-label mb-1">Expense Category</label>
+          <select id="expenseCategory" class="form-select">
+            <option value="ALL">All</option>
+          </select>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Table Card -->
+  <div class="card shadow-sm ledger-card">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div>
+          <span class="fw-semibold">Account:</span>
+          <span id="accountLabel" class="badge bg-light text-dark ms-1">-</span>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm" onclick="window.print()">🖨 Print</button>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-bordered table-hover mb-0 ledger-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th style="min-width: 180px;">Particulars</th>
+              <th>Receipt No</th>
+              <th>Txn Type</th>
+              <th>Payment Mode</th>
+              <th>Category</th>
+              <th>UTR / Ref</th>
+              <th>Attachment</th>
+              <th class="text-end">Credit (Cr)</th>
+              <th class="text-end">Debit (Dr)</th>
+              <th class="text-end">Balance</th>
+            </tr>
+          </thead>
+          <tbody id="reportTable">
+            <tr><td colspan="11" class="text-center text-muted">Select filters and click Search</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="summary" class="ledger-summary text-end"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let activeMode = "CASH";  // CASH / BANK
+  let allAccounts = [];
+  const VIEWED_KEY = "financeViewedAttachments";
+
+  document.addEventListener("DOMContentLoaded", () => {
+    initTabs();
+    setDefaultDates();
+    loadAccounts();
+    setupTxTypeListener();
+  });
+
+  function initTabs() {
+    document.querySelectorAll("#reportTabs .nav-link").forEach(btn => {
+      btn.addEventListener("click", function () {
+        document.querySelector("#reportTabs .nav-link.active").classList.remove("active");
+        this.classList.add("active");
+        activeMode = this.getAttribute("data-type");  // CASH / BANK
+        populateAccounts();
+      });
+    });
+  }
+
+  function setDefaultDates() {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    document.getElementById("fromDate").value = `${yyyy}-${mm}-01`;
+    document.getElementById("toDate").value = `${yyyy}-${mm}-${dd}`;
+  }
+
+  function setupTxTypeListener() {
+    const txSel = document.getElementById("txType");
+    const incDiv = document.getElementById("incomeCategoryDiv");
+    const expDiv = document.getElementById("expenseCategoryDiv");
+    const incSel = document.getElementById("incomeCategory");
+    const expSel = document.getElementById("expenseCategory");
+
+    txSel.addEventListener("change", function () {
+      const v = this.value.toUpperCase();
+
+      // Hide both by default
+      incDiv.style.display = "none";
+      expDiv.style.display = "none";
+      // Reset selected value to ALL
+      incSel.value = "ALL";
+      expSel.value = "ALL";
+
+      if (v === "INCOME") {
+        incDiv.style.display = "block";
+        loadIncomeCategories();
+      } else if (v === "EXPENSE") {
+        expDiv.style.display = "block";
+        loadExpenseCategories();
+      }
+    });
+  }
+
+  // ------- LocalStorage helpers for viewed attachments ----------
+  function getViewed() {
+    try { return JSON.parse(localStorage.getItem(VIEWED_KEY) || "[]"); }
+    catch (e) { return []; }
+  }
+
+  function isViewed(id) {
+    return getViewed().includes(String(id));
+  }
+
+  function markViewed(id) {
+    const ids = getViewed();
+    const s = String(id);
+    if (!ids.includes(s)) {
+      ids.push(s);
+      localStorage.setItem(VIEWED_KEY, JSON.stringify(ids));
+    }
+    const btn = document.getElementById("attach-btn-" + s);
+    if (btn) {
+      btn.classList.remove("badge-not-viewed");
+      btn.classList.add("badge-viewed");
+      btn.innerText = "👁 Viewed";
+    }
+  }
+
+  function openAttachment(file, id) {
+    if (!file) return;
+    window.open("/finance/attachment/" + encodeURIComponent(file), "_blank");
+    markViewed(id);
+  }
+
+  // ----------------- Load Accounts -----------------
+  function loadAccounts() {
+    fetch("/finance/api/accounts")
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) return;
+        allAccounts = data.accounts || [];
+        populateAccounts();
+      });
+  }
+
+  function populateAccounts() {
+    const sel = document.getElementById("accountSelect");
+    sel.innerHTML = "";
+
+    const typeNeeded = activeMode; // CASH / BANK
+    const filtered = allAccounts.filter(a => (a.account_type || "").toUpperCase() === typeNeeded);
+
+    if (!filtered.length) {
+      sel.innerHTML = `<option value="">No ${typeNeeded} accounts</option>`;
+      document.getElementById("accountLabel").innerText = "-";
+      return;
+    }
+
+    filtered.forEach(acc => {
+      const opt = document.createElement("option");
+      opt.value = acc.id;
+      opt.textContent = acc.account_name;
+      sel.appendChild(opt);
+    });
+
+    const first = filtered[0];
+    sel.value = first.id;
+    document.getElementById("accountLabel").innerText =
+      `${first.account_name} (${first.account_type})`;
+  }
+
+  // ----------------- Categories -----------------
+  function loadIncomeCategories() {
+    fetch("/finance/api/income-categories")
+      .then(r => r.json())
+      .then(data => {
+        const sel = document.getElementById("incomeCategory");
+        sel.innerHTML = `<option value="ALL">All</option>`;
+
+        // API returns { success, categories: [...] }
+        const list = data.categories || [];
+        list.forEach(c => {
+          sel.innerHTML += `<option value="${c.name}">${c.name}</option>`;
+        });
+      })
+      .catch(err => console.error("Income cat error", err));
+  }
+
+  function loadExpenseCategories() {
+    fetch("/finance/api/expense-categories")
+      .then(r => r.json())
+      .then(data => {
+        const sel = document.getElementById("expenseCategory");
+        sel.innerHTML = `<option value="ALL">All</option>`;
+
+        const list = data.categories || [];
+        list.forEach(c => {
+          sel.innerHTML += `<option value="${c.name}">${c.name}</option>`;
+        });
+      })
+      .catch(err => console.error("Expense cat error", err));
+  }
+
+  // ----------------- Helper -----------------
+  function formatAmount(v) {
+    const n = Number(v || 0);
+    return n.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  }
+
+  // ----------------- Load Report -----------------
+  function loadReport() {
+    const accId = document.getElementById("accountSelect").value;
+    const from = document.getElementById("fromDate").value;
+    const to = document.getElementById("toDate").value;
+    const txType = document.getElementById("txType").value;
+    const incomeCat = (document.getElementById("incomeCategory").value || "ALL");
+    const expenseCat = (document.getElementById("expenseCategory").value || "ALL");
+
+    if (!accId) { alert("Select an account"); return; }
+    if (!from || !to) { alert("Select from/to dates"); return; }
+
+    const endpoint = (activeMode === "CASH") ? "/finance/api/cash-report" : "/finance/api/bank-report";
+    const qs = new URLSearchParams({
+      account_id: accId,
+      from_date: from,
+      to_date: to,
+      tx_type: txType,
+      income_cat: incomeCat,
+      expense_cat: expenseCat
+    });
+
+    fetch(endpoint + "?" + qs.toString())
+      .then(r => r.json())
+      .then(data => {
+        const tbody = document.getElementById("reportTable");
+        if (data.error) {
+          tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger">${data.error}</td></tr>`;
+          document.getElementById("summary").innerText = "";
+          return;
+        }
+
+        if (!data.rows || !data.rows.length) {
+          tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted">No transactions found</td></tr>`;
+          document.getElementById("summary").innerText = "";
+          return;
+        }
+
+        const accObj = allAccounts.find(a => String(a.id) === String(accId));
+        if (accObj) {
+          document.getElementById("accountLabel").innerText =
+            `${accObj.account_name} (${accObj.account_type})`;
+        }
+
+        let html = "";
+        data.rows.forEach(r => {
+          const particulars =
+            (r.description && r.description.trim()) ||
+            (r.category || r.income_category || "") ||
+            "-";
+
+          const viewed = isViewed(r.id);
+          const badgeClass = viewed ? "badge-viewed" : "badge-not-viewed";
+          const badgeText = viewed ? "👁 Viewed" : "👁 View";
+
+          html += `
+            <tr>
+              <td>${r.display_date || ""}</td>
+              <td>${particulars}</td>
+              <td>${r.receipt_no || "-"}</td>
+              <td>${r.transaction_type || "-"}</td>
+              <td>${r.payment_mode || "-"}</td>
+              <td>${r.category || r.income_category || "-"}</td>
+              <td>${r.utr_no || "-"}</td>
+              <td class="text-center">
+                ${
+                  r.attachment_url
+                    ? `<span id="attach-btn-${r.id}"
+                             class="badge ${badgeClass}"
+                             style="cursor:pointer;"
+                             onclick="openAttachment('${r.attachment_url}', '${r.id}')">
+                          ${badgeText}
+                       </span>`
+                    : "-"
+                }
+              </td>
+              <td class="text-end text-success">${formatAmount(r.in_amount)}</td>
+              <td class="text-end text-danger">${formatAmount(r.out_amount)}</td>
+              <td class="text-end fw-semibold">${formatAmount(r.running_balance)}</td>
+            </tr>`;
+        });
+
+        tbody.innerHTML = html;
+
+        document.getElementById("summary").innerHTML =
+          `Opening: ₹${formatAmount(data.opening_balance)} &nbsp;|&nbsp; ` +
+          `Total Credit: ₹${formatAmount(data.total_in)} &nbsp;|&nbsp; ` +
+          `Total Debit: ₹${formatAmount(data.total_out)} &nbsp;|&nbsp; ` +
+          `Closing: ₹${formatAmount(data.closing_balance)}`;
+      })
+      .catch(err => {
+        console.error(err);
+        alert("Error loading report");
+      });
+  }
+</script>
+{% endblock %}
