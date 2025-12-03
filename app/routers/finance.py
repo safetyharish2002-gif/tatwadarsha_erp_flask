@@ -1417,3 +1417,166 @@ def mobile_bank_deposit_history():
     conn.close()
 
     return jsonify({"success": True, "data": rows}), 200
+
+# ---------------------------------------------
+# 📱 MOBILE: Delete Bank Deposit
+# ---------------------------------------------
+@finance_bp.route("/api/mobile/finance/bank-deposit/<string:tx_id>", methods=["DELETE"])
+def mobile_bank_deposit_delete(tx_id):
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    # Check transaction exists and is a BANK DEPOSIT
+    cur.execute("""
+        SELECT id, attachment_url
+        FROM finance_transactions
+        WHERE id = %s AND transaction_type = 'DEPOSIT' AND transaction_mode = 'BANK'
+    """, (tx_id,))
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Deposit not found"}), 404
+
+    attachment_url = row.get("attachment_url")
+
+    try:
+        # Delete record
+        cur.execute("DELETE FROM finance_transactions WHERE id = %s", (tx_id,))
+        conn.commit()
+
+        # Optionally delete file from disk
+        if attachment_url:
+            upload_dir = current_app.config.get("UPLOAD_FOLDER_FINANCE")
+            if upload_dir:
+                file_path = os.path.join(upload_dir, attachment_url)
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                    except Exception:
+                        # Don't fail API just because file delete failed
+                        pass
+
+        return jsonify({"success": True, "message": "Deposit deleted"}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+    finally:
+        cur.close()
+        conn.close()
+# ---------------------------------------------
+# 📱 MOBILE: Edit / Update Bank Deposit
+# ---------------------------------------------
+@finance_bp.route("/api/mobile/finance/bank-deposit/<string:tx_id>", methods=["PUT", "POST"])
+def mobile_bank_deposit_update(tx_id):
+    """
+    Accepts either:
+    - multipart/form-data (Flutter Dio with file)
+      -> request.form + request.files
+    - application/json (no file)
+      -> request.json
+    """
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    # Check deposit exists
+    cur.execute("""
+        SELECT id, attachment_url
+        FROM finance_transactions
+        WHERE id = %s AND transaction_type = 'DEPOSIT' AND transaction_mode = 'BANK'
+    """, (tx_id,))
+    existing = cur.fetchone()
+
+    if not existing:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Deposit not found"}), 404
+
+    old_attachment = existing.get("attachment_url")
+
+    # Detect content type
+    content_type = (request.content_type or "").lower()
+    is_multipart = "multipart/form-data" in content_type
+
+    if is_multipart:
+        data = request.form.to_dict()
+        file = request.files.get("attachment")
+    else:
+        data = request.json or {}
+        file = None
+
+    # Allow partial update, but at least amount or description or date or account must exist
+    if not any(k in data for k in ["amount", "description", "tx_date", "account_id"]) and not file:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "No fields to update"}), 400
+
+    # Prepare update parts
+    fields = []
+    values = []
+
+    if "account_id" in data and data["account_id"]:
+        fields.append("account_id = %s")
+        values.append(data["account_id"])
+
+    if "amount" in data and data["amount"]:
+        fields.append("amount = %s")
+        values.append(data["amount"])
+
+    if "description" in data:
+        fields.append("description = %s")
+        values.append(data.get("description") or "")
+
+    if "tx_date" in data and data["tx_date"]:
+        fields.append("tx_date = %s")
+        values.append(data["tx_date"])
+
+    # Handle attachment (replace old if new uploaded)
+    new_attachment = old_attachment
+    if file and allowed_file(file.filename):
+        tx_prefix = tx_id or uuid.uuid4().hex  # reuse id
+        filename = secure_filename(f"{tx_prefix}_{file.filename}")
+        upload_dir = current_app.config["UPLOAD_FOLDER_FINANCE"]
+        os.makedirs(upload_dir, exist_ok=True)
+        file.save(os.path.join(upload_dir, filename))
+
+        new_attachment = filename
+        fields.append("attachment_url = %s")
+        values.append(new_attachment)
+
+        # Optionally delete old file
+        if old_attachment:
+            try:
+                old_path = os.path.join(upload_dir, old_attachment)
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+            except Exception:
+                pass
+
+    if not fields:  # nothing changed
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Nothing to update"}), 400
+
+    values.append(tx_id)
+    query = f"""
+        UPDATE finance_transactions
+        SET {", ".join(fields)}
+        WHERE id = %s AND transaction_type = 'DEPOSIT' AND transaction_mode = 'BANK'
+    """
+
+    try:
+        cur.execute(query, tuple(values))
+        conn.commit()
+        return jsonify({"success": True, "message": "Deposit updated"}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+    finally:
+        cur.close()
+        conn.close()
