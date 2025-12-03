@@ -1191,3 +1191,115 @@ def api_bank_report():
     conn.close()
 
     return build_ledger_response(rows, opening)
+
+# ---------------------------------------
+# 📱 MOBILE API - Cash & Bank Accounts CRUD
+# ---------------------------------------
+
+@finance_bp.route("/api/mobile/finance/accounts", methods=["GET"])
+def mobile_get_accounts():
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT 
+            id,
+            account_type,
+            account_name,
+            account_holder_name,
+            account_number,
+            ifsc_code,
+            branch_name,
+            opening_balance
+        FROM bank_accounts
+        ORDER BY id DESC
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "data": rows
+    }), 200
+
+
+@finance_bp.route("/api/mobile/finance/accounts", methods=["POST"])
+def mobile_add_account():
+    data = request.json or {}
+
+    required = ["account_type", "account_name", "opening_balance"]
+    if any(k not in data for k in required):
+        return jsonify({"success": False, "message": "Missing required fields"}), 400
+
+    conn = get_mysql_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO bank_accounts
+        (account_type, account_name, account_holder_name, account_number,
+         ifsc_code, branch_name, opening_balance)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, (
+        data.get("account_type"),
+        data.get("account_name"),
+        data.get("account_holder_name"),
+        data.get("account_number"),
+        data.get("ifsc_code"),
+        data.get("branch_name"),
+        data.get("opening_balance"),
+    ))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "message": "Account created"}), 201
+
+
+@finance_bp.route("/api/mobile/finance/accounts/<int:account_id>", methods=["PUT"])
+def mobile_update_account(account_id):
+    data = request.json or {}
+    conn = get_mysql_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE bank_accounts SET
+            account_type=%s,
+            account_name=%s,
+            account_holder_name=%s,
+            account_number=%s,
+            ifsc_code=%s,
+            branch_name=%s,
+            opening_balance=%s
+        WHERE id=%s
+    """, (
+        data.get("account_type"),
+        data.get("account_name"),
+        data.get("account_holder_name"),
+        data.get("account_number"),
+        data.get("ifsc_code"),
+        data.get("branch_name"),
+        data.get("opening_balance"),
+        account_id
+    ))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "message": "Account updated"}), 200
+
+
+@finance_bp.route("/api/mobile/finance/accounts/<int:account_id>", methods=["DELETE"])
+def mobile_delete_account(account_id):
+    conn = get_mysql_connection()
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM bank_accounts WHERE id=%s", (account_id,))
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "message": "Account deleted"}), 200
