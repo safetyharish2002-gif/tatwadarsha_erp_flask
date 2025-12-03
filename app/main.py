@@ -120,6 +120,7 @@ try:
     from app.routers.exam_papers import exam_papers_bp
     from app.routers.finance import finance_bp    
     from app.routers.chat import chat_bp
+    from app.routers.auth import auth_bp
 
     # Register blueprints only if imports succeed
     app.register_blueprint(master_bp)
@@ -130,6 +131,7 @@ try:
     app.register_blueprint(exam_papers_bp)
     app.register_blueprint(finance_bp) 
     app.register_blueprint(chat_bp)
+    app.register_blueprint(auth_bp)
 
 except Exception as e:
     print("⚠️ Warning: Blueprint import/register failed:", e)
