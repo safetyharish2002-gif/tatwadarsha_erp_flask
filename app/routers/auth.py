@@ -53,7 +53,6 @@ def login_action():
                            title="Login",
                            error="Invalid username or password. Please try again.")
 
-
 # ====================================================
 # LOGOUT (WEB)
 # ====================================================
