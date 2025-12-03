@@ -1368,25 +1368,51 @@ def mobile_bank_deposit():
         conn.close()
 
 # ---------------------------------------------
-# 📱 MOBILE: Bank Deposit History
+# 📱 MOBILE: Bank Deposit History (with filters)
 # ---------------------------------------------
 @finance_bp.route("/api/mobile/finance/bank-deposit/history", methods=["GET"])
 def mobile_bank_deposit_history():
     conn = get_mysql_connection()
     cur = conn.cursor(dictionary=True)
 
-    cur.execute("""
+    from_date = request.args.get("from_date")  # 'YYYY-MM-DD' or None
+    to_date = request.args.get("to_date")      # 'YYYY-MM-DD' or None
+    account_id = request.args.get("account_id")
+
+    query = """
         SELECT 
-            ft.id, ft.amount, ft.description, ft.tx_date, ft.attachment_url,
-            ba.account_name
+            ft.id,
+            ft.account_id,
+            ba.account_name,
+            ft.amount,
+            ft.description,
+            ft.tx_date,
+            ft.attachment_url
         FROM finance_transactions ft
         JOIN bank_accounts ba ON ft.account_id = ba.id
-        WHERE ft.transaction_type='DEPOSIT'
-        ORDER BY ft.tx_date DESC
-        LIMIT 200
-    """)
+        WHERE ft.transaction_type = 'DEPOSIT'
+          AND ft.transaction_mode = 'BANK'
+    """
 
+    values = []
+
+    if account_id:
+        query += " AND ft.account_id = %s"
+        values.append(account_id)
+
+    if from_date:
+        query += " AND ft.tx_date >= %s"
+        values.append(from_date)
+
+    if to_date:
+        query += " AND ft.tx_date <= %s"
+        values.append(to_date)
+
+    query += " ORDER BY ft.tx_date DESC LIMIT 200"
+
+    cur.execute(query, tuple(values))
     rows = cur.fetchall()
+
     cur.close()
     conn.close()
 
