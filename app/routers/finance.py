@@ -1203,17 +1203,30 @@ def mobile_get_accounts():
 
     cur.execute("""
         SELECT 
-            id,
-            account_type,
-            account_name,
-            account_holder_name,
-            account_number,
-            ifsc_code,
-            branch_name,
-            opening_balance
-        FROM bank_accounts
-        ORDER BY id DESC
+            ba.id,
+            ba.account_type,
+            ba.account_name,
+            ba.account_holder_name,
+            ba.account_number,
+            ba.ifsc_code,
+            ba.branch_name,
+            ba.opening_balance,
+            COALESCE((
+                ba.opening_balance + (
+                    SELECT SUM(
+                        CASE 
+                            WHEN ft.transaction_type IN ('INCOME','DEPOSIT') THEN ft.amount
+                            ELSE -ft.amount
+                        END
+                    )
+                    FROM finance_transactions ft
+                    WHERE ft.account_id = ba.id
+                )
+            ), ba.opening_balance) AS closing_balance
+        FROM bank_accounts ba
+        ORDER BY ba.id DESC
     """)
+
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -1222,7 +1235,6 @@ def mobile_get_accounts():
         "success": True,
         "data": rows
     }), 200
-
 
 @finance_bp.route("/api/mobile/finance/accounts", methods=["POST"])
 def mobile_add_account():
