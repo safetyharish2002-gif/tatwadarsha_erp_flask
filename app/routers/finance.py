@@ -1315,3 +1315,79 @@ def mobile_delete_account(account_id):
     conn.close()
 
     return jsonify({"success": True, "message": "Account deleted"}), 200
+
+# ---------------------------------------------
+# 📱 MOBILE: Add Bank Deposit
+# ---------------------------------------------
+@finance_bp.route("/api/mobile/finance/bank-deposit", methods=["POST"])
+def mobile_bank_deposit():
+    data = request.form.to_dict()  # Because Flutter sends multipart
+    file = request.files.get("attachment")
+
+    required = ["account_id", "amount", "description", "tx_date"]
+    if any(x not in data or not data[x] for x in required):
+        return jsonify({"success": False, "message": "Missing fields"}), 400
+
+    conn = get_mysql_connection()
+    cur = conn.cursor()
+
+    tx_id = uuid.uuid4().hex
+    attachment_url = None
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(f"{tx_id}_{file.filename}")
+        upload_dir = current_app.config["UPLOAD_FOLDER_FINANCE"]
+        os.makedirs(upload_dir, exist_ok=True)
+        file.save(os.path.join(upload_dir, filename))
+        attachment_url = filename
+
+    try:
+        cur.execute("""
+            INSERT INTO finance_transactions
+            (id, account_id, transaction_mode, transaction_type, amount, 
+             description, attachment_url, tx_date)
+            VALUES (%s, %s, 'BANK', 'DEPOSIT', %s, %s, %s, %s)
+        """, (
+            tx_id,
+            data["account_id"],
+            data["amount"],
+            data["description"],
+            attachment_url,
+            data["tx_date"]
+        ))
+
+        conn.commit()
+        return jsonify({"success": True, "message": "Deposit Added"}), 201
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+    finally:
+        cur.close()
+        conn.close()
+
+# ---------------------------------------------
+# 📱 MOBILE: Bank Deposit History
+# ---------------------------------------------
+@finance_bp.route("/api/mobile/finance/bank-deposit/history", methods=["GET"])
+def mobile_bank_deposit_history():
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT 
+            ft.id, ft.amount, ft.description, ft.tx_date, ft.attachment_url,
+            ba.account_name
+        FROM finance_transactions ft
+        JOIN bank_accounts ba ON ft.account_id = ba.id
+        WHERE ft.transaction_type='DEPOSIT'
+        ORDER BY ft.tx_date DESC
+        LIMIT 200
+    """)
+
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "data": rows}), 200
