@@ -1580,3 +1580,10 @@ def mobile_bank_deposit_update(tx_id):
     finally:
         cur.close()
         conn.close()
+@finance_bp.route('/finance/attachment/<filename>')
+def finance_attachment(filename):
+    return send_from_directory(
+        current_app.config['UPLOAD_FOLDER_FINANCE'],
+        filename,
+        as_attachment=False
+    )
