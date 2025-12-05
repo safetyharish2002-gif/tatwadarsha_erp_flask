@@ -18,8 +18,7 @@ ADMIN_PASS = os.getenv("ADMIN_PASS", "admin@")
 SESSION_HOURS = 8
 
 # JWT Secret Key
-JWT_SECRET = os.getenv("JWT_SECRET", "TATWA_SECRET_KEY_CHANGE_ME")
-
+from app.jwt_utils import SECRET_KEY as JWT_SECRET
 
 # ====================================================
 # LOGIN PAGE (WEB - GET)
