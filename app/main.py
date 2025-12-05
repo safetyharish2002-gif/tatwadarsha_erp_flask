@@ -129,9 +129,8 @@ try:
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(fees_bp)
     app.register_blueprint(exam_papers_bp)
-    app.register_blueprint(finance_bp) 
     app.register_blueprint(chat_bp)
-    app.register_blueprint(auth_bp)
+    app.register_blueprint(auth_bp, url_prefix="/api")
 
 except Exception as e:
     print("⚠️ Warning: Blueprint import/register failed:", e)
