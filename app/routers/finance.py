@@ -2,6 +2,8 @@ from app.routers.master import get_db
 from flask import session, jsonify
 import uuid
 from datetime import datetime, date
+from flask import request
+from app.jwt_utils import verify_token
 # FILE: app/routers/finance.py
 
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify, flash, session
@@ -1580,8 +1582,16 @@ def mobile_bank_deposit_update(tx_id):
     finally:
         cur.close()
         conn.close()
+
 @finance_bp.route('/finance/attachment/<filename>')
 def finance_attachment(filename):
+    # Read token sent by mobile app
+    token = request.headers.get("X-Auth-Token")
+
+    # Validate token (user must be logged in)
+    if not token or not verify_token(token):
+        return "Unauthorized", 403
+
     return send_from_directory(
         current_app.config['UPLOAD_FOLDER_FINANCE'],
         filename,
