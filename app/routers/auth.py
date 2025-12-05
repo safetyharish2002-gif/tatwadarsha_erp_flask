@@ -65,7 +65,7 @@ def logout():
 # ====================================================
 # 📱 MOBILE APP LOGIN (API - POST)
 # ====================================================
-@auth_bp.route("/auth/login", methods=["POST"])
+@auth_bp.route("/api/auth/login", methods=["POST"])
 def api_login():
     data = request.get_json(silent=True) or {}
     username = data.get("username", "").strip()
