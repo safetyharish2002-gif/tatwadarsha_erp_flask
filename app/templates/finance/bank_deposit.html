@@ -94,7 +94,7 @@
           <td>{{ tx.description }}</td>
           <td>
             {% if tx.attachment_url %}
-            <a href="{{ url_for('finance.finance_attachment', filename=tx.attachment_url) }}" target="_blank" class="btn btn-sm btn-dark">📎 View</a>
+            <a href="{{ url_for('finance.finance_attachment_public', filename=tx.attachment_url) }}" target="_blank" class="btn btn-sm btn-dark">📎 View</a>
             {% else %}-{% endif %}
           </td>
           <td>

@@ -167,7 +167,7 @@
           <td>
             {% if row.attachment_url %}
             <a class="btn btn-sm btn-outline-primary"
-               href="{{ url_for('finance.finance_attachment', filename=row.attachment_url) }}"
+               href="{{ url_for('finance.finance_attachment_public', filename=row.attachment_url) }}"
                target="_blank">📎 View</a>
             {% else %}
             -

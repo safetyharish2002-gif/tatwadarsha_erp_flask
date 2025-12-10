@@ -143,7 +143,7 @@
             <td class="fw-bold text-success">₹ {{ "%.2f"|format(tx.amount or 0) }}</td>
             <td>
               {% if tx.attachment_url %}
-              <a href="{{ url_for('finance.finance_attachment', filename=tx.attachment_url) }}"
+              <a href="{{ url_for('finance.finance_attachment_public', filename=tx.attachment_url) }}"
                  target="_blank" class="btn btn-sm btn-dark">📎 View</a>
               {% else %}-{% endif %}
             </td>
