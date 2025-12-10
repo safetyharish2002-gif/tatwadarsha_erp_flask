@@ -1583,21 +1583,20 @@ def mobile_bank_deposit_update(tx_id):
         cur.close()
         conn.close()
 
-@finance_bp.route('/finance/attachment/<filename>')
-def finance_attachment(filename):
-    auth_header = request.headers.get("Authorization")
+from flask import send_from_directory, abort, current_app
+import os
 
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return "Unauthorized", 403
+@finance_bp.route('/finance/attachment/<path:filename>', methods=['GET'])
+def finance_attachment_public(filename):
+    uploads_dir = current_app.config["UPLOAD_FOLDER_FINANCE"]
 
-    token = auth_header.split(" ")[1]
-    data = verify_token(token)
+    file_path = os.path.join(uploads_dir, filename)
 
-    if not data or "user_id" not in data:
-        return "Unauthorized", 403
+    if not os.path.isfile(file_path):
+        return abort(404)
 
     return send_from_directory(
-        current_app.config['UPLOAD_FOLDER_FINANCE'],
+        uploads_dir,
         filename,
         as_attachment=False
     )
