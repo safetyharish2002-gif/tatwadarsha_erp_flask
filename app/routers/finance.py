@@ -9,7 +9,7 @@ from app.jwt_utils import verify_token
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify, flash, session
 from app.db import get_mysql_connection
 
-finance_bp = Blueprint("finance", __name__)
+finance_bp = Blueprint("finance_bp", __name__)
 
 # ---------------------------------------
 # Login Session Check
