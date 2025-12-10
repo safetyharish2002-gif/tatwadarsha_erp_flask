@@ -1585,13 +1585,15 @@ def mobile_bank_deposit_update(tx_id):
 
 @finance_bp.route('/finance/attachment/<filename>')
 def finance_attachment(filename):
-    token = request.headers.get("X-Auth-Token")
+    auth_header = request.headers.get("Authorization")
 
-    if not token:
-        return "Token missing", 403
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return "Unauthorized", 403
 
+    token = auth_header.split(" ")[1]
     data = verify_token(token)
-    if not data or "username" not in data:
+
+    if not data or "user_id" not in data:
         return "Unauthorized", 403
 
     return send_from_directory(

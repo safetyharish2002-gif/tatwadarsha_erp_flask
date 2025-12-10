@@ -19,6 +19,7 @@ SESSION_HOURS = 8
 
 # JWT Secret Key
 from app.jwt_utils import SECRET_KEY as JWT_SECRET
+from app.jwt_utils import generate_token
 
 # ====================================================
 # LOGIN PAGE (WEB - GET)
@@ -77,16 +78,9 @@ def api_login():
     if username != ADMIN_USER or password != ADMIN_PASS:
         return jsonify({"success": False, "message": "Invalid credentials"}), 401
 
-    # Create JWT token
-    payload = {
-        "username": username,
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=SESSION_HOURS),
-    }
-    token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+   # Create JWT token (same format as verify_token expects)
+    token = generate_token(username)
 
-    # Convert bytes to string if needed
-    if isinstance(token, bytes):
-        token = token.decode("utf-8")
 
     return jsonify({
         "success": True,
