@@ -673,23 +673,25 @@ def delete_expense(tx_id):
 
 
 # ---------------------------------------
-# Serve Finance Attachments Securely
+# PUBLIC Finance Attachment Serving
 # ---------------------------------------
-@finance_bp.route("/finance/attachment/<path:filename>")
-def finance_attachment(filename):
-    if not is_logged_in():
-        return "Unauthorized", 403
-    folder = current_app.config["UPLOAD_FOLDER_FINANCE"]
-    return send_from_directory(folder, filename)
+from flask import send_from_directory, abort, current_app
+import os
 
+@finance_bp.route('/finance/attachment/<path:filename>', methods=['GET'])
+def finance_attachment_public(filename):
+    uploads_dir = current_app.config["UPLOAD_FOLDER_FINANCE"]
+    file_path = os.path.join(uploads_dir, filename)
 
-# ✅ ALIAS ROUTE so old templates using
-#    'finance.finance_attachment_view'
-#    still work without changes
-@finance_bp.route("/finance/attachment-view/<path:filename>")
-def finance_attachment_view(filename):
-    # Reuse the same logic
-    return finance_attachment(filename)
+    if not os.path.isfile(file_path):
+        return abort(404)
+
+    return send_from_directory(
+        uploads_dir,
+        filename,
+        as_attachment=False
+    )
+
 
 # ---------------------------------------
 # Income Entry (Manual)
