@@ -1602,3 +1602,138 @@ def finance_attachment_public(filename):
         filename,
         as_attachment=False
     )
+
+## finance mobile/app/api/self withdrawal##
+@finance_bp.route("/api/mobile/finance/self-withdrawal", methods=["POST"])
+def mobile_self_withdrawal():
+    data = request.form.to_dict()
+    file = request.files.get("attachment")
+
+    required = ["account_id", "amount", "description", "tx_date"]
+    if any(x not in data or not data[x] for x in required):
+        return jsonify({"success": False, "message": "Missing fields"}), 400
+
+    conn = get_mysql_connection()
+    cur = conn.cursor()
+
+    tx_id = uuid.uuid4().hex
+    attachment_url = None
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(f"{tx_id}_{file.filename}")
+        upload_dir = current_app.config["UPLOAD_FOLDER_FINANCE"]
+        os.makedirs(upload_dir, exist_ok=True)
+        file.save(os.path.join(upload_dir, filename))
+        attachment_url = filename
+
+    try:
+        cur.execute("""
+            INSERT INTO finance_transactions
+            (id, account_id, transaction_mode, transaction_type,
+             amount, description, attachment_url, tx_date)
+            VALUES (%s, %s, 'BANK', 'WITHDRAWAL', %s, %s, %s, %s)
+        """, (
+            tx_id,
+            data["account_id"],
+            data["amount"],
+            data["description"],
+            attachment_url,
+            data["tx_date"]
+        ))
+
+        conn.commit()
+        return jsonify({"success": True, "message": "Self withdrawal saved"}), 201
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+    finally:
+        cur.close()
+        conn.close()
+
+@finance_bp.route("/api/mobile/finance/self-withdrawal/history", methods=["GET"])
+def mobile_self_withdrawal_history():
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    from_date = request.args.get("from_date")
+    to_date = request.args.get("to_date")
+    account_id = request.args.get("account_id")
+
+    query = """
+        SELECT 
+            ft.id,
+            ft.account_id,
+            ba.account_name,
+            ft.amount,
+            ft.description,
+            ft.tx_date,
+            ft.attachment_url
+        FROM finance_transactions ft
+        JOIN bank_accounts ba ON ft.account_id = ba.id
+        WHERE ft.transaction_type='WITHDRAWAL'
+          AND ft.transaction_mode='BANK'
+    """
+
+    values = []
+
+    if account_id:
+        query += " AND ft.account_id=%s"
+        values.append(account_id)
+
+    if from_date:
+        query += " AND ft.tx_date >= %s"
+        values.append(from_date)
+
+    if to_date:
+        query += " AND ft.tx_date <= %s"
+        values.append(to_date)
+
+    query += " ORDER BY ft.tx_date DESC LIMIT 200"
+
+    cur.execute(query, tuple(values))
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "data": rows}), 200
+
+@finance_bp.route("/api/mobile/finance/self-withdrawal/<string:tx_id>", methods=["DELETE"])
+def mobile_self_withdrawal_delete(tx_id):
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT attachment_url
+        FROM finance_transactions
+        WHERE id=%s
+          AND transaction_type='WITHDRAWAL'
+          AND transaction_mode='BANK'
+    """, (tx_id,))
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Not found"}), 404
+
+    try:
+        cur.execute("DELETE FROM finance_transactions WHERE id=%s", (tx_id,))
+        conn.commit()
+
+        if row["attachment_url"]:
+            path = os.path.join(current_app.config["UPLOAD_FOLDER_FINANCE"], row["attachment_url"])
+            if os.path.exists(path):
+                os.remove(path)
+
+        return jsonify({"success": True, "message": "Deleted"}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+    finally:
+        cur.close()
+        conn.close()
