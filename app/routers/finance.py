@@ -1603,30 +1603,47 @@ def finance_attachment_public(filename):
         as_attachment=False
     )
 
-## finance mobile/app/api/self withdrawal##
+# ---------------------------------------------
+# 📱 MOBILE: Add Self Withdrawal
+# ---------------------------------------------
 @finance_bp.route("/api/mobile/finance/self-withdrawal", methods=["POST"])
 def mobile_self_withdrawal():
-    data = request.form.to_dict()
-    file = request.files.get("attachment")
-
-    required = ["account_id", "amount", "description", "tx_date"]
-    if any(x not in data or not data[x] for x in required):
-        return jsonify({"success": False, "message": "Missing fields"}), 400
-
-    conn = get_mysql_connection()
-    cur = conn.cursor()
-
-    tx_id = uuid.uuid4().hex
-    attachment_url = None
-
-    if file and allowed_file(file.filename):
-        filename = secure_filename(f"{tx_id}_{file.filename}")
-        upload_dir = current_app.config["UPLOAD_FOLDER_FINANCE"]
-        os.makedirs(upload_dir, exist_ok=True)
-        file.save(os.path.join(upload_dir, filename))
-        attachment_url = filename
-
+    conn = None
+    cur = None
     try:
+        data = request.form.to_dict()
+        file = request.files.get("attachment")
+
+        # Required fields
+        required = ["account_id", "amount", "description", "tx_date"]
+        if any(x not in data or not data[x] for x in required):
+            return jsonify({
+                "success": False,
+                "message": "Missing required fields"
+            }), 400
+
+        upload_dir = current_app.config.get("UPLOAD_FOLDER_FINANCE")
+        if not upload_dir:
+            return jsonify({
+                "success": False,
+                "message": "Upload folder not configured"
+            }), 500
+
+        os.makedirs(upload_dir, exist_ok=True)
+
+        conn = get_mysql_connection()
+        cur = conn.cursor()
+
+        tx_id = uuid.uuid4().hex
+        attachment_url = None
+
+        # File upload (optional)
+        if file and allowed_file(file.filename):
+            filename = secure_filename(f"{tx_id}_{file.filename}")
+            file.save(os.path.join(upload_dir, filename))
+            attachment_url = filename
+
+        # Insert withdrawal (BANK side only)
         cur.execute("""
             INSERT INTO finance_transactions
             (id, account_id, transaction_mode, transaction_type,
@@ -1642,98 +1659,161 @@ def mobile_self_withdrawal():
         ))
 
         conn.commit()
-        return jsonify({"success": True, "message": "Self withdrawal saved"}), 201
+
+        return jsonify({
+            "success": True,
+            "message": "Self withdrawal saved",
+            "id": tx_id
+        }), 201
 
     except Exception as e:
-        conn.rollback()
-        return jsonify({"success": False, "message": str(e)}), 500
+        if conn:
+            conn.rollback()
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
 
     finally:
-        cur.close()
-        conn.close()
-
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+# ---------------------------------------------
+# 📱 MOBILE: Self Withdrawal History
+# ---------------------------------------------
 @finance_bp.route("/api/mobile/finance/self-withdrawal/history", methods=["GET"])
 def mobile_self_withdrawal_history():
-    conn = get_mysql_connection()
-    cur = conn.cursor(dictionary=True)
+    conn = None
+    cur = None
+    try:
+        conn = get_mysql_connection()
+        cur = conn.cursor(dictionary=True)
 
-    from_date = request.args.get("from_date")
-    to_date = request.args.get("to_date")
-    account_id = request.args.get("account_id")
+        from_date = request.args.get("from_date")
+        to_date = request.args.get("to_date")
+        account_id = request.args.get("account_id")
 
-    query = """
-        SELECT 
-            ft.id,
-            ft.account_id,
-            ba.account_name,
-            ft.amount,
-            ft.description,
-            ft.tx_date,
-            ft.attachment_url
-        FROM finance_transactions ft
-        JOIN bank_accounts ba ON ft.account_id = ba.id
-        WHERE ft.transaction_type='WITHDRAWAL'
-          AND ft.transaction_mode='BANK'
-    """
+        query = """
+            SELECT 
+                ft.id,
+                ft.account_id,
+                ba.account_name,
+                ft.amount,
+                ft.description,
+                ft.tx_date,
+                ft.attachment_url
+            FROM finance_transactions ft
+            JOIN bank_accounts ba ON ft.account_id = ba.id
+            WHERE ft.transaction_type = 'WITHDRAWAL'
+              AND ft.transaction_mode = 'BANK'
+        """
+        values = []
 
-    values = []
+        if account_id:
+            query += " AND ft.account_id = %s"
+            values.append(account_id)
 
-    if account_id:
-        query += " AND ft.account_id=%s"
-        values.append(account_id)
+        if from_date:
+            query += " AND ft.tx_date >= %s"
+            values.append(from_date)
 
-    if from_date:
-        query += " AND ft.tx_date >= %s"
-        values.append(from_date)
+        if to_date:
+            query += " AND ft.tx_date <= %s"
+            values.append(to_date)
 
-    if to_date:
-        query += " AND ft.tx_date <= %s"
-        values.append(to_date)
+        query += " ORDER BY ft.tx_date DESC LIMIT 200"
 
-    query += " ORDER BY ft.tx_date DESC LIMIT 200"
+        cur.execute(query, tuple(values))
+        rows = cur.fetchall()
 
-    cur.execute(query, tuple(values))
-    rows = cur.fetchall()
+        return jsonify({
+            "success": True,
+            "data": rows
+        }), 200
 
-    cur.close()
-    conn.close()
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
 
-    return jsonify({"success": True, "data": rows}), 200
-
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+# ---------------------------------------------
+# 📱 MOBILE: Delete Self Withdrawal
+# ---------------------------------------------
 @finance_bp.route("/api/mobile/finance/self-withdrawal/<string:tx_id>", methods=["DELETE"])
 def mobile_self_withdrawal_delete(tx_id):
-    conn = get_mysql_connection()
-    cur = conn.cursor(dictionary=True)
-
-    cur.execute("""
-        SELECT attachment_url
-        FROM finance_transactions
-        WHERE id=%s
-          AND transaction_type='WITHDRAWAL'
-          AND transaction_mode='BANK'
-    """, (tx_id,))
-    row = cur.fetchone()
-
-    if not row:
-        cur.close()
-        conn.close()
-        return jsonify({"success": False, "message": "Not found"}), 404
-
+    conn = None
+    cur = None
     try:
+        conn = get_mysql_connection()
+        cur = conn.cursor(dictionary=True)
+
+        # Check record
+        cur.execute("""
+            SELECT attachment_url
+            FROM finance_transactions
+            WHERE id=%s
+              AND transaction_type='WITHDRAWAL'
+              AND transaction_mode='BANK'
+        """, (tx_id,))
+        row = cur.fetchone()
+
+        if not row:
+            return jsonify({
+                "success": False,
+                "message": "Withdrawal not found"
+            }), 404
+
         cur.execute("DELETE FROM finance_transactions WHERE id=%s", (tx_id,))
         conn.commit()
 
+        # Delete attachment if exists
         if row["attachment_url"]:
-            path = os.path.join(current_app.config["UPLOAD_FOLDER_FINANCE"], row["attachment_url"])
-            if os.path.exists(path):
-                os.remove(path)
+            upload_dir = current_app.config.get("UPLOAD_FOLDER_FINANCE")
+            if upload_dir:
+                file_path = os.path.join(upload_dir, row["attachment_url"])
+                if os.path.exists(file_path):
+                    os.remove(file_path)
 
-        return jsonify({"success": True, "message": "Deleted"}), 200
+        return jsonify({
+            "success": True,
+            "message": "Self withdrawal deleted"
+        }), 200
 
     except Exception as e:
-        conn.rollback()
-        return jsonify({"success": False, "message": str(e)}), 500
+        if conn:
+            conn.rollback()
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
 
     finally:
-        cur.close()
-        conn.close()
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+# ---------------------------------------------
+# 📎 PUBLIC: Finance Attachment View
+# ---------------------------------------------
+@finance_bp.route("/finance/attachment/<path:filename>", methods=["GET"])
+def finance_attachment_public(filename):
+    upload_dir = current_app.config.get("UPLOAD_FOLDER_FINANCE")
+    if not upload_dir:
+        return abort(404)
+
+    file_path = os.path.join(upload_dir, filename)
+    if not os.path.isfile(file_path):
+        return abort(404)
+
+    return send_from_directory(
+        upload_dir,
+        filename,
+        as_attachment=False
+    )
