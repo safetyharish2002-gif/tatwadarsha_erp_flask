@@ -1773,64 +1773,6 @@ def mobile_delete_expense_category(cid):
     return jsonify({"success": True, "message": "Category deleted"}), 200
 
 # ---------------------------------------------
-# 📱 MOBILE: Expense Categories
-# ---------------------------------------------
-
-@finance_bp.route("/api/mobile/finance/expense-categories", methods=["GET"])
-def mobile_expense_categories():
-    conn = get_mysql_connection()
-    cur = conn.cursor(dictionary=True)
-
-    cur.execute("""
-        SELECT id, category_name
-        FROM expense_categories
-        ORDER BY category_name ASC
-    """)
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return jsonify({"success": True, "data": rows}), 200
-
-
-@finance_bp.route("/api/mobile/finance/expense-categories", methods=["POST"])
-def mobile_add_expense_category():
-    data = request.json or {}
-    name = (data.get("category_name") or "").strip()
-
-    if not name:
-        return jsonify({"success": False, "message": "Category required"}), 400
-
-    conn = get_mysql_connection()
-    cur = conn.cursor()
-
-    cur.execute(
-        "INSERT INTO expense_categories (category_name) VALUES (%s)",
-        (name,)
-    )
-    conn.commit()
-
-    cur.close()
-    conn.close()
-
-    return jsonify({"success": True, "message": "Category added"}), 201
-
-
-@finance_bp.route("/api/mobile/finance/expense-categories/<int:cid>", methods=["DELETE"])
-def mobile_delete_expense_category(cid):
-    conn = get_mysql_connection()
-    cur = conn.cursor()
-
-    cur.execute("DELETE FROM expense_categories WHERE id=%s", (cid,))
-    conn.commit()
-
-    cur.close()
-    conn.close()
-
-    return jsonify({"success": True, "message": "Category deleted"}), 200
-
-# ---------------------------------------------
 # 📱 MOBILE: Expense History
 # ---------------------------------------------
 @finance_bp.route("/api/mobile/finance/expense/history", methods=["GET"])
@@ -1910,6 +1852,55 @@ def mobile_delete_expense(tx_id):
                 os.remove(path)
 
         return jsonify({"success": True, "message": "Expense deleted"}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+    finally:
+        cur.close()
+        conn.close()
+
+# ---------------------------------------------
+# 📱 MOBILE: Add Expense
+# ---------------------------------------------
+@finance_bp.route("/api/mobile/finance/expense", methods=["POST"])
+def mobile_add_expense():
+    data = request.form
+    file = request.files.get("attachment")
+
+    required = ["account_id", "amount", "category", "tx_date"]
+    if any(not data.get(k) for k in required):
+        return jsonify({"success": False, "message": "Missing fields"}), 400
+
+    conn = get_mysql_connection()
+    cur = conn.cursor()
+
+    attachment_url = None
+    if file and allowed_file(file.filename):
+        filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
+        upload_dir = current_app.config["UPLOAD_FOLDER_FINANCE"]
+        os.makedirs(upload_dir, exist_ok=True)
+        file.save(os.path.join(upload_dir, filename))
+        attachment_url = filename
+
+    try:
+        cur.execute("""
+            INSERT INTO finance_transactions
+            (account_id, transaction_mode, transaction_type,
+             amount, category, description, attachment_url, tx_date)
+            VALUES (%s, 'BANK', 'EXPENSE', %s, %s, %s, %s, %s)
+        """, (
+            data["account_id"],
+            data["amount"],
+            data["category"],
+            data.get("description", ""),
+            attachment_url,
+            data["tx_date"]
+        ))
+
+        conn.commit()
+        return jsonify({"success": True, "message": "Expense added"}), 201
 
     except Exception as e:
         conn.rollback()
