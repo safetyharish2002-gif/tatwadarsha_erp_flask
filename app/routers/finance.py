@@ -1714,3 +1714,207 @@ def mobile_self_withdrawal_delete(tx_id):
         conn.close()
 
 
+# ---------------------------------------------
+# 📱 MOBILE: Expense Categories
+# ---------------------------------------------
+
+@finance_bp.route("/api/mobile/finance/expense-categories", methods=["GET"])
+def mobile_expense_categories():
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT id, category_name
+        FROM expense_categories
+        ORDER BY category_name ASC
+    """)
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "data": rows}), 200
+
+
+@finance_bp.route("/api/mobile/finance/expense-categories", methods=["POST"])
+def mobile_add_expense_category():
+    data = request.json or {}
+    name = (data.get("category_name") or "").strip()
+
+    if not name:
+        return jsonify({"success": False, "message": "Category required"}), 400
+
+    conn = get_mysql_connection()
+    cur = conn.cursor()
+
+    cur.execute(
+        "INSERT INTO expense_categories (category_name) VALUES (%s)",
+        (name,)
+    )
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "message": "Category added"}), 201
+
+
+@finance_bp.route("/api/mobile/finance/expense-categories/<int:cid>", methods=["DELETE"])
+def mobile_delete_expense_category(cid):
+    conn = get_mysql_connection()
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM expense_categories WHERE id=%s", (cid,))
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "message": "Category deleted"}), 200
+
+# ---------------------------------------------
+# 📱 MOBILE: Expense Categories
+# ---------------------------------------------
+
+@finance_bp.route("/api/mobile/finance/expense-categories", methods=["GET"])
+def mobile_expense_categories():
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT id, category_name
+        FROM expense_categories
+        ORDER BY category_name ASC
+    """)
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "data": rows}), 200
+
+
+@finance_bp.route("/api/mobile/finance/expense-categories", methods=["POST"])
+def mobile_add_expense_category():
+    data = request.json or {}
+    name = (data.get("category_name") or "").strip()
+
+    if not name:
+        return jsonify({"success": False, "message": "Category required"}), 400
+
+    conn = get_mysql_connection()
+    cur = conn.cursor()
+
+    cur.execute(
+        "INSERT INTO expense_categories (category_name) VALUES (%s)",
+        (name,)
+    )
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "message": "Category added"}), 201
+
+
+@finance_bp.route("/api/mobile/finance/expense-categories/<int:cid>", methods=["DELETE"])
+def mobile_delete_expense_category(cid):
+    conn = get_mysql_connection()
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM expense_categories WHERE id=%s", (cid,))
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "message": "Category deleted"}), 200
+
+# ---------------------------------------------
+# 📱 MOBILE: Expense History
+# ---------------------------------------------
+@finance_bp.route("/api/mobile/finance/expense/history", methods=["GET"])
+def mobile_expense_history():
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    from_date = request.args.get("from_date")
+    to_date = request.args.get("to_date")
+    category = request.args.get("category")
+
+    query = """
+        SELECT 
+            ft.id,
+            ft.tx_date,
+            ft.amount,
+            ft.category,
+            ft.description,
+            ft.attachment_url,
+            ba.account_name
+        FROM finance_transactions ft
+        JOIN bank_accounts ba ON ft.account_id = ba.id
+        WHERE ft.transaction_type='EXPENSE'
+    """
+    params = []
+
+    if from_date:
+        query += " AND ft.tx_date >= %s"
+        params.append(from_date)
+
+    if to_date:
+        query += " AND ft.tx_date <= %s"
+        params.append(to_date)
+
+    if category and category != "ALL":
+        query += " AND ft.category = %s"
+        params.append(category)
+
+    query += " ORDER BY ft.tx_date DESC"
+
+    cur.execute(query, params)
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "data": rows}), 200
+
+# ---------------------------------------------
+# 📱 MOBILE: Delete Expense
+# ---------------------------------------------
+@finance_bp.route("/api/mobile/finance/expense/<int:tx_id>", methods=["DELETE"])
+def mobile_delete_expense(tx_id):
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT attachment_url
+        FROM finance_transactions
+        WHERE id=%s AND transaction_type='EXPENSE'
+    """, (tx_id,))
+    row = cur.fetchone()
+
+    if not row:
+        return jsonify({"success": False, "message": "Not found"}), 404
+
+    try:
+        cur.execute("DELETE FROM finance_transactions WHERE id=%s", (tx_id,))
+        conn.commit()
+
+        if row["attachment_url"]:
+            path = os.path.join(
+                current_app.config["UPLOAD_FOLDER_FINANCE"],
+                row["attachment_url"]
+            )
+            if os.path.exists(path):
+                os.remove(path)
+
+        return jsonify({"success": True, "message": "Expense deleted"}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+    finally:
+        cur.close()
+        conn.close()
