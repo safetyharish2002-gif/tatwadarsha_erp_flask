@@ -1585,57 +1585,39 @@ def mobile_bank_deposit_update(tx_id):
         cur.close()
         conn.close()
 
-from flask import send_from_directory, abort, current_app
-import os
 
-@finance_bp.route('/finance/attachment/<path:filename>', methods=['GET'])
-def finance_attachment_public(filename):
-    uploads_dir = current_app.config["UPLOAD_FOLDER_FINANCE"]
-
-    file_path = os.path.join(uploads_dir, filename)
-
-    if not os.path.isfile(file_path):
-        return abort(404)
-
-    return send_from_directory(
-        uploads_dir,
-        filename,
-        as_attachment=False
-    )
 #ADD SELF WITHDRAWAL##
 @finance_bp.route("/api/mobile/finance/self-withdrawal", methods=["POST"])
 def mobile_self_withdrawal():
-    data = request.form.to_dict()
-    file = request.files.get("attachment")
-
-    required = ["account_id", "amount", "tx_date"]
-    if any(k not in data or not data[k] for k in required):
-        return jsonify({"success": False, "message": "Missing fields"}), 400
-
-    conn = get_mysql_connection()
-    cur = conn.cursor()
-
-    attachment_url = None
-    if file and allowed_file(file.filename):
-        filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
-        upload_dir = current_app.config["UPLOAD_FOLDER_FINANCE"]
-        os.makedirs(upload_dir, exist_ok=True)
-        file.save(os.path.join(upload_dir, filename))
-        attachment_url = filename
-
     try:
+        data = request.form
+        file = request.files.get("attachment")
+
+        account_id = data.get("account_id")
+        amount = data.get("amount")
+        tx_date = data.get("tx_date")
+        description = data.get("description", "")
+
+        if not account_id or not amount or not tx_date:
+            return jsonify({"success": False, "message": "Missing fields"}), 400
+
+        conn = get_mysql_connection()
+        cur = conn.cursor()
+
+        attachment_url = None
+        if file and allowed_file(file.filename):
+            filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
+            upload_dir = current_app.config["UPLOAD_FOLDER_FINANCE"]
+            os.makedirs(upload_dir, exist_ok=True)
+            file.save(os.path.join(upload_dir, filename))
+            attachment_url = filename
+
         cur.execute("""
             INSERT INTO finance_transactions
             (account_id, transaction_mode, transaction_type,
              amount, description, attachment_url, tx_date)
             VALUES (%s, 'BANK', 'WITHDRAWAL', %s, %s, %s, %s)
-        """, (
-            data["account_id"],
-            data["amount"],
-            data.get("description", ""),
-            attachment_url,
-            data["tx_date"]
-        ))
+        """, (account_id, amount, description, attachment_url, tx_date))
 
         conn.commit()
         return jsonify({"success": True, "message": "Self withdrawal saved"}), 201
@@ -1647,6 +1629,7 @@ def mobile_self_withdrawal():
     finally:
         cur.close()
         conn.close()
+
 
 
 @finance_bp.route("/api/mobile/finance/self-withdrawal/history", methods=["GET"])
