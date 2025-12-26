@@ -1909,3 +1909,234 @@ def mobile_add_expense():
     finally:
         cur.close()
         conn.close()
+
+# ---------------------------------------------
+# 📱 MOBILE: Get Income Categories
+# ---------------------------------------------
+@finance_bp.route("/api/mobile/finance/income-categories", methods=["GET"])
+def mobile_income_categories():
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT id, category_name
+        FROM income_categories
+        WHERE is_active = 1
+        ORDER BY category_name ASC
+    """)
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "data": rows}), 200
+# ---------------------------------------------
+# 📱 MOBILE: Add Income Category
+# ---------------------------------------------
+@finance_bp.route("/api/mobile/finance/income-categories", methods=["POST"])
+def mobile_add_income_category():
+    data = request.json or {}
+    name = (data.get("category_name") or "").strip()
+
+    if not name:
+        return jsonify({"success": False, "message": "Category required"}), 400
+
+    conn = get_mysql_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO income_categories (category_name, is_active)
+        VALUES (%s, 1)
+    """, (name,))
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "message": "Category added"}), 201
+# ---------------------------------------------
+# 📱 MOBILE: Delete Income Category
+# ---------------------------------------------
+@finance_bp.route(
+    "/api/mobile/finance/income-categories/<int:cid>",
+    methods=["DELETE"]
+)
+def mobile_delete_income_category(cid):
+    conn = get_mysql_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+            SELECT COUNT(*) 
+            FROM finance_transactions
+            WHERE transaction_type='INCOME'
+              AND category = (
+                  SELECT category_name
+                  FROM income_categories
+                  WHERE id=%s
+              )
+        """, (cid,))
+        used = cur.fetchone()[0]
+
+        if used > 0:
+            cur.execute(
+                "UPDATE income_categories SET is_active=0 WHERE id=%s",
+                (cid,)
+            )
+        else:
+            cur.execute(
+                "DELETE FROM income_categories WHERE id=%s",
+                (cid,)
+            )
+
+        conn.commit()
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+    finally:
+        cur.close()
+        conn.close()
+# ---------------------------------------------
+# 📱 MOBILE: Add Income
+# ---------------------------------------------
+@finance_bp.route("/api/mobile/finance/income", methods=["POST"])
+def mobile_add_income():
+    data = request.form
+    file = request.files.get("attachment")
+
+    required = ["account_id", "amount", "category", "tx_date"]
+    if any(not data.get(k) for k in required):
+        return jsonify({"success": False, "message": "Missing fields"}), 400
+
+    conn = get_mysql_connection()
+    cur = conn.cursor()
+
+    attachment_url = None
+    if file and allowed_file(file.filename):
+        filename = secure_filename(f"{uuid.uuid4().hex}_{file.filename}")
+        upload_dir = current_app.config["UPLOAD_FOLDER_FINANCE"]
+        file.save(os.path.join(upload_dir, filename))
+        attachment_url = filename
+
+    try:
+        cur.execute("""
+            INSERT INTO finance_transactions
+            (account_id, transaction_mode, transaction_type,
+             amount, category, description, attachment_url, tx_date)
+            VALUES (%s, 'BANK', 'INCOME',
+                    %s, %s, %s, %s, %s)
+        """, (
+            data["account_id"],
+            data["amount"],
+            data["category"],
+            data.get("description", ""),
+            attachment_url,
+            data["tx_date"]
+        ))
+
+        conn.commit()
+        return jsonify({"success": True, "message": "Income added"}), 201
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+    finally:
+        cur.close()
+        conn.close()
+# ---------------------------------------------
+# 📱 MOBILE: Income History
+# ---------------------------------------------
+@finance_bp.route("/api/mobile/finance/income/history", methods=["GET"])
+def mobile_income_history():
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    from_date = request.args.get("from_date")
+    to_date = request.args.get("to_date")
+    category = request.args.get("category")
+
+    query = """
+        SELECT
+            ft.id,
+            ft.tx_date,
+            ft.amount,
+            ft.category,
+            ft.description,
+            ft.attachment_url,
+            ba.account_name
+        FROM finance_transactions ft
+        JOIN bank_accounts ba ON ft.account_id = ba.id
+        WHERE ft.transaction_type = 'INCOME'
+    """
+    params = []
+
+    if from_date:
+        query += " AND ft.tx_date >= %s"
+        params.append(from_date)
+
+    if to_date:
+        query += " AND ft.tx_date <= %s"
+        params.append(to_date)
+
+    if category and category != "ALL":
+        query += " AND ft.category = %s"
+        params.append(category)
+
+    query += " ORDER BY ft.tx_date DESC"
+
+    cur.execute(query, params)
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "data": rows}), 200
+# ---------------------------------------------
+# 📱 MOBILE: Delete Income
+# ---------------------------------------------
+@finance_bp.route(
+    "/api/mobile/finance/income/<int:tx_id>",
+    methods=["DELETE"]
+)
+def mobile_delete_income(tx_id):
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT attachment_url
+        FROM finance_transactions
+        WHERE id=%s AND transaction_type='INCOME'
+    """, (tx_id,))
+    row = cur.fetchone()
+
+    if not row:
+        return jsonify({"success": False, "message": "Not found"}), 404
+
+    try:
+        cur.execute(
+            "DELETE FROM finance_transactions WHERE id=%s",
+            (tx_id,)
+        )
+        conn.commit()
+
+        if row["attachment_url"]:
+            path = os.path.join(
+                current_app.config["UPLOAD_FOLDER_FINANCE"],
+                row["attachment_url"]
+            )
+            if os.path.exists(path):
+                os.remove(path)
+
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+    finally:
+        cur.close()
+        conn.close()
