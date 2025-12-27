@@ -288,7 +288,6 @@ def mobile_chat_login():
         WHERE username=%s AND password=%s AND active=1
     """, (username, password))
     user = cur.fetchone()
-
     cur.close()
     db.close()
 
@@ -301,7 +300,7 @@ def mobile_chat_login():
         "role": user["role"],
         "name": user["full_name"] or user["username"]
     })
-
+ 
 @chat_bp.route("/api/mobile/chat/requests", methods=["GET"])
 def mobile_chat_requests():
     auth = request.headers.get("Authorization", "")
@@ -315,9 +314,9 @@ def mobile_chat_requests():
         return jsonify({"success": False}), 503
 
     cur = db.cursor(dictionary=True)
-
     cur.execute("SELECT role FROM chat_users WHERE user_id=%s", (user_id,))
     user = cur.fetchone()
+
     if not user:
         cur.close()
         db.close()
@@ -333,7 +332,7 @@ def mobile_chat_requests():
         cur.execute("""
             SELECT id, amount, purpose, status
             FROM finance_requests
-            WHERE created_by=%s
+            WHERE requester_id=%s
             ORDER BY created_at DESC
         """, (user_id,))
 
@@ -355,7 +354,7 @@ def mobile_chat_messages(req_id):
 
     cur = db.cursor(dictionary=True)
     cur.execute("""
-        SELECT sender_name, sender_role, message, attachment, created_at
+        SELECT sender_id, sender_name, message, file_url, created_at
         FROM finance_chat
         WHERE request_id=%s
         ORDER BY created_at ASC
@@ -366,73 +365,14 @@ def mobile_chat_messages(req_id):
     db.close()
 
     for r in rows:
-        if r["attachment"]:
-            r["attachment"] = url_for(
+        if r["file_url"]:
+            r["file_url"] = url_for(
                 "chat.chat_attachment",
-                filename=r["attachment"],
+                filename=r["file_url"].split("/")[-1],
                 _external=True
             )
 
     return jsonify({"success": True, "data": rows})
-
-@chat_bp.route("/api/mobile/chat/send", methods=["POST"])
-def mobile_chat_send():
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer chat_"):
-        return jsonify({"success": False}), 401
-
-    user_id = auth.replace("Bearer chat_", "")
-    req_id = request.form.get("request_id")
-    msg = request.form.get("message", "")
-
-    if not req_id:
-        return jsonify({"success": False}), 400
-
-    db = get_db_safe()
-    if not db:
-        return jsonify({"success": False}), 503
-
-    cur = db.cursor(dictionary=True)
-    cur.execute(
-        "SELECT full_name, role FROM chat_users WHERE user_id=%s",
-        (user_id,)
-    )
-    user = cur.fetchone()
-
-    attachment_name = None
-    if "attachment" in request.files:
-        file = request.files["attachment"]
-        if file and file.filename:
-            upload_dir = os.path.join(current_app.static_folder, CHAT_UPLOAD_DIR)
-            os.makedirs(upload_dir, exist_ok=True)
-            attachment_name = f"{uuid.uuid4().hex}_{secure_filename(file.filename)}"
-            file.save(os.path.join(upload_dir, attachment_name))
-
-    cur.execute("""
-        INSERT INTO finance_chat
-        (request_id, sender_id, sender_name, sender_role, message, attachment)
-        VALUES (%s, %s, %s, %s, %s, %s)
-    """, (
-        req_id,
-        user_id,
-        user["full_name"],
-        user["role"],
-        msg,
-        attachment_name
-    ))
-
-    db.commit()
-    cur.close()
-    db.close()
-
-    return jsonify({"success": True})
-
-
-@chat_bp.route("/chat/attachment/<path:filename>")
-def chat_attachment(filename):
-    upload_dir = os.path.join(current_app.static_folder, CHAT_UPLOAD_DIR)
-    return send_from_directory(upload_dir, filename, as_attachment=False)
-
 
 @chat_bp.route("/api/mobile/chat/request/add", methods=["POST"])
 def mobile_chat_request_add():
@@ -441,69 +381,88 @@ def mobile_chat_request_add():
         return jsonify({"success": False}), 401
 
     user_id = auth.replace("Bearer chat_", "")
-
     amount = request.form.get("amount")
     purpose = request.form.get("purpose")
 
     if not amount or not purpose:
-        return jsonify({
-            "success": False,
-            "message": "Missing fields"
-        }), 400
+        return jsonify({"success": False}), 400
 
-    # ✅ SAFE DB GET
-    db = get_db()
+    db = get_db_safe()
     if not db:
-        return jsonify({
-            "success": False,
-            "message": "Database busy. Try again."
-        }), 503
+        return jsonify({"success": False}), 503
 
     cur = db.cursor(dictionary=True)
+    cur.execute("SELECT full_name, role FROM chat_users WHERE user_id=%s", (user_id,))
+    user = cur.fetchone()
 
-    try:
-        # Check role
-        cur.execute(
-            "SELECT role FROM chat_users WHERE user_id=%s",
-            (user_id,)
-        )
-        user = cur.fetchone()
-
-        if not user or user["role"] != "accountant":
-            return jsonify({
-                "success": False,
-                "message": "Only accountant can create request"
-            }), 403
-
-        attachment_name = None
-
-        if "attachment" in request.files:
-            file = request.files["attachment"]
-            if file and file.filename:
-                upload_dir = os.path.join(
-                    current_app.static_folder, CHAT_UPLOAD_DIR
-                )
-                os.makedirs(upload_dir, exist_ok=True)
-
-                filename = f"{uuid.uuid4().hex}_{secure_filename(file.filename)}"
-                file.save(os.path.join(upload_dir, filename))
-                attachment_name = filename
-
-        cur.execute("""
-            INSERT INTO finance_requests
-            (amount, purpose, attachment, created_by, status, created_at)
-            VALUES (%s, %s, %s, %s, 'PENDING', NOW())
-        """, (
-            amount,
-            purpose,
-            attachment_name,
-            user_id
-        ))
-
-        db.commit()
-        return jsonify({"success": True})
-
-    finally:
-        # ✅ ALWAYS CLOSE CONNECTION
+    if not user or user["role"] != "accountant":
         cur.close()
         db.close()
+        return jsonify({"success": False}), 403
+
+    attachment = None
+    if "attachment" in request.files:
+        file = request.files["attachment"]
+        if file and file.filename:
+            upload_dir = os.path.join(current_app.static_folder, CHAT_UPLOAD_DIR)
+            os.makedirs(upload_dir, exist_ok=True)
+            filename = f"{uuid.uuid4().hex}_{secure_filename(file.filename)}"
+            file.save(os.path.join(upload_dir, filename))
+            attachment = f"/static/{CHAT_UPLOAD_DIR}/{filename}"
+
+    cur.execute("""
+        INSERT INTO finance_requests
+        (requester_id, requester_name, amount, purpose, attachment, status, created_at)
+        VALUES (%s, %s, %s, %s, %s, 'pending', NOW())
+    """, (
+        user_id,
+        user["full_name"],
+        amount,
+        purpose,
+        attachment
+    ))
+
+    db.commit()
+    cur.close()
+    db.close()
+
+    return jsonify({"success": True})
+@chat_bp.route("/api/mobile/chat/request/status", methods=["POST"])
+def mobile_chat_request_status():
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer chat_"):
+        return jsonify({"success": False}), 401
+
+    user_id = auth.replace("Bearer chat_", "")
+    data = request.json or {}
+
+    req_id = data.get("request_id")
+    status = data.get("status")
+
+    if status not in ("approved", "rejected"):
+        return jsonify({"success": False}), 400
+
+    db = get_db_safe()
+    if not db:
+        return jsonify({"success": False}), 503
+
+    cur = db.cursor(dictionary=True)
+    cur.execute("SELECT role FROM chat_users WHERE user_id=%s", (user_id,))
+    user = cur.fetchone()
+
+    if not user or user["role"] != "admin":
+        cur.close()
+        db.close()
+        return jsonify({"success": False}), 403
+
+    cur.execute("""
+        UPDATE finance_requests
+        SET status=%s
+        WHERE id=%s
+    """, (status, req_id))
+
+    db.commit()
+    cur.close()
+    db.close()
+
+    return jsonify({"success": True})
