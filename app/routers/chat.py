@@ -342,6 +342,10 @@ def mobile_chat_requests():
 
     return jsonify({"success": True, "data": rows})
 
+from datetime import timezone, timedelta
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
 @chat_bp.route("/api/mobile/chat/messages/<int:req_id>", methods=["GET"])
 def mobile_chat_messages(req_id):
     auth = request.headers.get("Authorization", "")
@@ -353,26 +357,46 @@ def mobile_chat_messages(req_id):
         return jsonify({"success": False}), 503
 
     cur = db.cursor(dictionary=True)
+
     cur.execute("""
-        SELECT sender_id, sender_name, message, file_url, created_at
+        SELECT
+            sender_id,
+            sender_name,
+            message,
+            attachment,
+            created_at
         FROM finance_chat
         WHERE request_id=%s
         ORDER BY created_at ASC
     """, (req_id,))
 
     rows = cur.fetchall()
-    cur.close()
-    db.close()
 
     for r in rows:
-        if r["file_url"]:
-            r["file_url"] = url_for(
+        # Convert datetime → IST string (Flutter safe)
+        if r["created_at"]:
+            r["created_at"] = (
+                r["created_at"]
+                .replace(tzinfo=timezone.utc)
+                .astimezone(IST)
+                .strftime("%d-%m-%Y %I:%M %p")
+            )
+
+        if r["attachment"]:
+            r["attachment"] = url_for(
                 "chat.chat_attachment",
-                filename=r["file_url"].split("/")[-1],
+                filename=r["attachment"],
                 _external=True
             )
 
-    return jsonify({"success": True, "data": rows})
+    cur.close()
+    db.close()
+
+    return jsonify({
+        "success": True,
+        "data": rows
+    })
+
 
 @chat_bp.route("/api/mobile/chat/request/add", methods=["POST"])
 def mobile_chat_request_add():
@@ -466,3 +490,81 @@ def mobile_chat_request_status():
     db.close()
 
     return jsonify({"success": True})
+
+@chat_bp.route("/api/mobile/chat/send", methods=["POST"])
+def mobile_chat_send():
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer chat_"):
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    user_id = auth.replace("Bearer chat_", "")
+
+    request_id = request.form.get("request_id")
+    message = request.form.get("message", "").strip()
+
+    if not request_id:
+        return jsonify({"success": False, "message": "request_id required"}), 400
+
+    if not message and "attachment" not in request.files:
+        return jsonify({
+            "success": False,
+            "message": "Message or attachment required"
+        }), 400
+
+    db = get_db_safe()
+    if not db:
+        return jsonify({"success": False, "message": "DB busy"}), 503
+
+    cur = db.cursor(dictionary=True)
+
+    # Get sender details
+    cur.execute(
+        "SELECT full_name FROM chat_users WHERE user_id=%s",
+        (user_id,)
+    )
+    user = cur.fetchone()
+
+    if not user:
+        cur.close()
+        db.close()
+        return jsonify({"success": False}), 401
+
+    attachment_name = None
+
+    # Handle attachment
+    if "attachment" in request.files:
+        file = request.files["attachment"]
+        if file and file.filename:
+            upload_dir = os.path.join(
+                current_app.root_path, "static", "chat_uploads"
+            )
+            os.makedirs(upload_dir, exist_ok=True)
+
+            attachment_name = f"{uuid.uuid4().hex}_{secure_filename(file.filename)}"
+            file.save(os.path.join(upload_dir, attachment_name))
+
+    # Insert message
+    cur.execute("""
+        INSERT INTO finance_chat
+        (request_id, sender_id, sender_name, message, attachment, created_at)
+        VALUES (%s, %s, %s, %s, %s, NOW())
+    """, (
+        request_id,
+        user_id,
+        user["full_name"],
+        message,
+        attachment_name
+    ))
+
+    db.commit()
+    cur.close()
+    db.close()
+
+    return jsonify({"success": True})
+
+@chat_bp.route("/chat/attachment/<path:filename>")
+def chat_attachment(filename):
+    upload_dir = os.path.join(
+        current_app.root_path, "static", "chat_uploads"
+    )
+    return send_from_directory(upload_dir, filename, as_attachment=False)
