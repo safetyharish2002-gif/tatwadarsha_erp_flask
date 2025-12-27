@@ -257,7 +257,6 @@ def reject_request(req_id):
     flash("Request rejected.", "warning")
     return redirect(url_for("chat.chat_room", request_id=req_id))
 
-# 📱 API: Chat Login (Mobile)
 @chat_bp.route("/api/mobile/chat/login", methods=["POST"])
 def mobile_chat_login():
     data = request.json
@@ -277,9 +276,8 @@ def mobile_chat_login():
     cur.close()
 
     if not user:
-        return jsonify({"success": False}), 401
+        return jsonify({"success": False, "message": "Invalid credentials"}), 401
 
-    # simple token (no JWT to keep simple)
     token = f"chat_{user['user_id']}"
 
     return jsonify({
@@ -288,7 +286,6 @@ def mobile_chat_login():
         "role": user["role"],
         "name": user["full_name"] or user["username"]
     })
-# 📱 API: Requests List
 @chat_bp.route("/api/mobile/chat/requests", methods=["GET"])
 def mobile_chat_requests():
     auth = request.headers.get("Authorization", "")
@@ -300,34 +297,99 @@ def mobile_chat_requests():
     db = get_db()
     cur = db.cursor(dictionary=True)
 
-    # admin sees all
-    cur.execute("""
-        SELECT fr.id, fr.amount, fr.purpose, fr.status
-        FROM finance_requests fr
-        ORDER BY fr.created_at DESC
-    """)
+    # Get user role
+    cur.execute(
+        "SELECT role FROM chat_users WHERE user_id=%s",
+        (user_id,)
+    )
+    user = cur.fetchone()
+    if not user:
+        return jsonify({"success": False}), 401
+
+    role = user["role"]
+
+    if role == "admin":
+        # ✅ Admin sees ALL requests (any status)
+        cur.execute("""
+            SELECT id, amount, purpose, status
+            FROM finance_requests
+            ORDER BY created_at DESC
+        """)
+    else:
+        # ✅ Accountant sees ALL OWN requests (any status)
+        cur.execute("""
+            SELECT id, amount, purpose, status
+            FROM finance_requests
+            WHERE created_by = %s
+            ORDER BY created_at DESC
+        """, (user_id,))
 
     rows = cur.fetchall()
     cur.close()
 
-    return jsonify({"success": True, "data": rows})
-# 📱 API: Send Chat Message
+    return jsonify({
+        "success": True,
+        "data": rows
+    })
+@chat_bp.route("/api/mobile/chat/messages/<int:req_id>", methods=["GET"])
+def mobile_chat_messages(req_id):
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer chat_"):
+        return jsonify({"success": False}), 401
+
+    db = get_db()
+    cur = db.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT sender_name, sender_role, message, created_at
+        FROM finance_chat
+        WHERE request_id=%s
+        ORDER BY created_at ASC
+    """, (req_id,))
+
+    rows = cur.fetchall()
+    cur.close()
+
+    return jsonify({
+        "success": True,
+        "data": rows
+    })
+
 @chat_bp.route("/api/mobile/chat/send", methods=["POST"])
 def mobile_chat_send():
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer chat_"):
+        return jsonify({"success": False}), 401
+
+    user_id = auth.replace("Bearer chat_", "")
+
     data = request.json
     req_id = data.get("request_id")
     msg = data.get("message")
 
-    if not msg:
+    if not msg or not req_id:
         return jsonify({"success": False}), 400
 
     db = get_db()
-    cur = db.cursor()
+    cur = db.cursor(dictionary=True)
+
+    cur.execute(
+        "SELECT full_name, role FROM chat_users WHERE user_id=%s",
+        (user_id,)
+    )
+    user = cur.fetchone()
 
     cur.execute("""
-        INSERT INTO finance_chat (request_id, sender_id, sender_name, message)
-        VALUES (%s, %s, %s, %s)
-    """, (req_id, 0, "Mobile User", msg))
+        INSERT INTO finance_chat
+        (request_id, sender_id, sender_name, sender_role, message)
+        VALUES (%s, %s, %s, %s, %s)
+    """, (
+        req_id,
+        user_id,
+        user["full_name"],
+        user["role"],
+        msg
+    ))
 
     db.commit()
     cur.close()
