@@ -346,6 +346,10 @@ from datetime import timezone, timedelta
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
+from datetime import timezone, timedelta
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
 @chat_bp.route("/api/mobile/chat/messages/<int:req_id>", methods=["GET"])
 def mobile_chat_messages(req_id):
     auth = request.headers.get("Authorization", "")
@@ -363,7 +367,7 @@ def mobile_chat_messages(req_id):
             sender_id,
             sender_name,
             message,
-            attachment,
+            file_url,
             created_at
         FROM finance_chat
         WHERE request_id=%s
@@ -373,21 +377,27 @@ def mobile_chat_messages(req_id):
     rows = cur.fetchall()
 
     for r in rows:
-        # Convert datetime → IST string (Flutter safe)
+        # ✅ Convert datetime → IST (Flutter safe)
         if r["created_at"]:
             r["created_at"] = (
                 r["created_at"]
                 .replace(tzinfo=timezone.utc)
                 .astimezone(IST)
-                .strftime("%d-%m-%Y %I:%M %p")
+                .isoformat()
             )
 
-        if r["attachment"]:
+        # ✅ Map DB column → Flutter expected key
+        if r["file_url"]:
             r["attachment"] = url_for(
                 "chat.chat_attachment",
-                filename=r["attachment"],
+                filename=r["file_url"].replace("/static/chat_uploads/", ""),
                 _external=True
             )
+        else:
+            r["attachment"] = None
+
+        # ❌ Remove raw DB column
+        r.pop("file_url", None)
 
     cur.close()
     db.close()
@@ -498,7 +508,6 @@ def mobile_chat_send():
         return jsonify({"success": False, "message": "Unauthorized"}), 401
 
     user_id = auth.replace("Bearer chat_", "")
-
     request_id = request.form.get("request_id")
     message = request.form.get("message", "").strip()
 
@@ -517,21 +526,19 @@ def mobile_chat_send():
 
     cur = db.cursor(dictionary=True)
 
-    # Get sender details
+    # Get sender
     cur.execute(
         "SELECT full_name FROM chat_users WHERE user_id=%s",
         (user_id,)
     )
     user = cur.fetchone()
-
     if not user:
         cur.close()
         db.close()
         return jsonify({"success": False}), 401
 
-    attachment_name = None
+    file_url = None
 
-    # Handle attachment
     if "attachment" in request.files:
         file = request.files["attachment"]
         if file and file.filename:
@@ -540,20 +547,21 @@ def mobile_chat_send():
             )
             os.makedirs(upload_dir, exist_ok=True)
 
-            attachment_name = f"{uuid.uuid4().hex}_{secure_filename(file.filename)}"
-            file.save(os.path.join(upload_dir, attachment_name))
+            filename = f"{uuid.uuid4().hex}_{secure_filename(file.filename)}"
+            file.save(os.path.join(upload_dir, filename))
+            file_url = f"/static/chat_uploads/{filename}"
 
-    # Insert message
+    # ✅ CORRECT INSERT
     cur.execute("""
         INSERT INTO finance_chat
-        (request_id, sender_id, sender_name, message, attachment, created_at)
+        (request_id, sender_id, sender_name, message, file_url, created_at)
         VALUES (%s, %s, %s, %s, %s, NOW())
     """, (
         request_id,
         user_id,
         user["full_name"],
         message,
-        attachment_name
+        file_url
     ))
 
     db.commit()
