@@ -2140,3 +2140,138 @@ def mobile_delete_income(tx_id):
     finally:
         cur.close()
         conn.close()
+
+@finance_bp.route("/api/mobile/finance/cash-ledger", methods=["GET"])
+def mobile_cash_ledger():
+    account_id = request.args.get("account_id")
+    from_date = request.args.get("from_date")
+    to_date = request.args.get("to_date")
+    tx_type = (request.args.get("tx_type") or "ALL").upper()
+    income_cat = request.args.get("income_cat") or "ALL"
+    expense_cat = request.args.get("expense_cat") or "ALL"
+
+    if not account_id or not from_date or not to_date:
+        return jsonify({"success": False, "message": "Missing filters"}), 400
+
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    # Opening balance (same logic as web)
+    cur.execute("""
+        SELECT 
+            COALESCE(ba.opening_balance, 0)
+            +
+            COALESCE(SUM(
+                CASE 
+                    WHEN ft.transaction_type IN ('INCOME','DEPOSIT') THEN ft.amount
+                    ELSE -ft.amount
+                END
+            ), 0) AS opening
+        FROM bank_accounts ba
+        LEFT JOIN finance_transactions ft 
+            ON ba.id = ft.account_id
+            AND ft.transaction_mode='CASH'
+            AND ft.tx_date < %s
+        WHERE ba.id=%s
+    """, (from_date, account_id))
+
+    opening = float(cur.fetchone()["opening"] or 0)
+
+    query = """
+        SELECT id, tx_date, transaction_type, amount, description,
+               category, attachment_url
+        FROM finance_transactions
+        WHERE transaction_mode='CASH'
+          AND account_id=%s
+          AND tx_date BETWEEN %s AND %s
+    """
+    params = [account_id, from_date, to_date]
+
+    if tx_type != "ALL":
+        query += " AND transaction_type=%s"
+        params.append(tx_type)
+
+    if tx_type == "INCOME" and income_cat != "ALL":
+        query += " AND category=%s"
+        params.append(income_cat)
+
+    if tx_type == "EXPENSE" and expense_cat != "ALL":
+        query += " AND category=%s"
+        params.append(expense_cat)
+
+    query += " ORDER BY tx_date ASC, id ASC"
+
+    cur.execute(query, params)
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return build_ledger_response(rows, opening)
+
+@finance_bp.route("/api/mobile/finance/bank-ledger", methods=["GET"])
+def mobile_bank_ledger():
+    account_id = request.args.get("account_id")
+    from_date = request.args.get("from_date")
+    to_date = request.args.get("to_date")
+    tx_type = (request.args.get("tx_type") or "ALL").upper()
+    income_cat = request.args.get("income_cat") or "ALL"
+    expense_cat = request.args.get("expense_cat") or "ALL"
+
+    if not account_id or not from_date or not to_date:
+        return jsonify({"success": False, "message": "Missing filters"}), 400
+
+    conn = get_mysql_connection()
+    cur = conn.cursor(dictionary=True)
+
+    cur.execute("""
+        SELECT 
+            COALESCE(ba.opening_balance, 0)
+            +
+            COALESCE(SUM(
+                CASE 
+                    WHEN ft.transaction_type IN ('INCOME','DEPOSIT') THEN ft.amount
+                    ELSE -ft.amount
+                END
+            ), 0) AS opening
+        FROM bank_accounts ba
+        LEFT JOIN finance_transactions ft 
+            ON ba.id = ft.account_id
+            AND ft.transaction_mode='BANK'
+            AND ft.tx_date < %s
+        WHERE ba.id=%s
+    """, (from_date, account_id))
+
+    opening = float(cur.fetchone()["opening"] or 0)
+
+    query = """
+        SELECT id, tx_date, transaction_type, amount, description,
+               category, attachment_url
+        FROM finance_transactions
+        WHERE transaction_mode='BANK'
+          AND account_id=%s
+          AND tx_date BETWEEN %s AND %s
+    """
+    params = [account_id, from_date, to_date]
+
+    if tx_type != "ALL":
+        query += " AND transaction_type=%s"
+        params.append(tx_type)
+
+    if tx_type == "INCOME" and income_cat != "ALL":
+        query += " AND category=%s"
+        params.append(income_cat)
+
+    if tx_type == "EXPENSE" and expense_cat != "ALL":
+        query += " AND category=%s"
+        params.append(expense_cat)
+
+    query += " ORDER BY tx_date ASC, id ASC"
+
+    cur.execute(query, params)
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return build_ledger_response(rows, opening)
