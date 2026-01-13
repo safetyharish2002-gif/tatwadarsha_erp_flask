@@ -55,7 +55,9 @@ def get_db_connection():
         print(f"❌ MySQL Connection Error: {e}")
         return None
 
-
+# 🔒 FILE UPLOAD LIMIT (5 MB)
+        app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
+    
 def row_to_dict(cursor, row):
     """Convert row into dict using cursor column names (works with non-dict cursor)."""
     return dict(zip(cursor.column_names, row))

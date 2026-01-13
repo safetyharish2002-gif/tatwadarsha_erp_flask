@@ -1,3 +1,4 @@
+
 # FILE: app/routers/students.py
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, session, send_from_directory
 import pandas as pd
@@ -1214,30 +1215,19 @@ def session_wise_data():
 
 @students_bp.route("/api/student/login", methods=["POST"])
 def api_student_login():
+    conn = None
+    cur = None
     try:
         data = request.get_json(force=True)
+        reg = (data.get("register_number") or "").strip()
+        pwd = (data.get("password") or "").strip()
 
-        register_number = (data.get("register_number") or "").strip()
-        password = (data.get("password") or "").strip()
-
-        if not register_number or not password:
-            return jsonify({
-                "success": False,
-                "message": "Register number and password required"
-            }), 400
+        if not reg or not pwd:
+            return jsonify({"success": False, "message": "Credentials required"}), 400
 
         conn = get_mysql_connection()
-        if not conn:
-            return jsonify({
-                "success": False,
-                "message": "Database connection failed"
-            }), 500
-
         cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM students WHERE register_number = %s",
-            (register_number,)
-        )
+        cur.execute("SELECT * FROM students WHERE register_number=%s", (reg,))
         row = cur.fetchone()
 
         if not row:
@@ -1246,8 +1236,7 @@ def api_student_login():
         cols = [d[0] for d in cur.description]
         student = dict(zip(cols, row))
 
-        # PASSWORD = MOBILE NUMBER
-        if (student.get("phone") or "").strip() != password:
+        if (student.get("phone") or "") != pwd:
             return jsonify({"success": False, "message": "Invalid credentials"}), 401
 
         token = jwt.encode(
@@ -1256,28 +1245,20 @@ def api_student_login():
                 "role": "STUDENT",
                 "exp": datetime.utcnow() + timedelta(days=7)
             },
-            current_app.config.get("SECRET_KEY", "tatwadarsha_secret"),
+            current_app.config["SECRET_KEY"],
             algorithm="HS256"
         )
 
-        return jsonify({
-            "success": True,
-            "token": token,
-            "student": {
-                "id": student["id"],
-                "name": student["name"],
-                "register_number": student["register_number"],
-                "course": student["course"],
-                "department": student["department"],
-                "batch": student["batch"],
-                "session": student["session"],
-                "photo_url": student.get("photo_url")
-            }
-        })
+        return jsonify({"success": True, "token": token})
 
     except Exception as e:
-        print("STUDENT LOGIN ERROR:", e)
-        return jsonify({"success": False, "message": "Server error"}), 500
+        print("LOGIN ERROR:", e)
+        return jsonify({"success": False}), 500
+
+    finally:
+        if cur: cur.close()
+        if conn: conn.close()
+
 
 def student_login_required(f):
     @wraps(f)
@@ -1303,111 +1284,91 @@ def student_login_required(f):
 @students_bp.route("/api/student/profile", methods=["GET"])
 @student_login_required
 def api_student_profile():
-    conn = get_mysql_connection()
-    if not conn:
-        return jsonify({"success": False, "message": "DB connection failed"}), 500
+    conn = None
+    cur = None
+    try:
+        conn = get_mysql_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM students WHERE id=%s", (request.student_id,))
+        row = cur.fetchone()
 
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM students WHERE id = %s", (request.student_id,))
-    row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False}), 404
 
-    if not row:
-        return jsonify({"success": False, "message": "Student not found"}), 404
+        cols = [d[0] for d in cur.description]
+        profile = build_nested_student_from_row(dict(zip(cols, row)))
 
-    cols = [d[0] for d in cur.description]
-    rowd = dict(zip(cols, row))
+        return jsonify({"success": True, "student": profile})
 
-    profile = build_nested_student_from_row(rowd)
+    except Exception as e:
+        print("PROFILE ERROR:", e)
+        return jsonify({"success": False}), 500
 
-    cur.close()
-    conn.close()
-
-    return jsonify({"success": True, "student": profile})
-
+    finally:
+        if cur: cur.close()
+        if conn: conn.close()
 def save_student_file(file, subfolder, prefix):
-    BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-
-    upload_dir = os.path.join(BASE_DIR, "..", "uploads", "students", subfolder)
+    BASE = os.path.abspath(os.path.dirname(__file__))
+    upload_dir = os.path.join(BASE, "..", "uploads", "students", subfolder)
     os.makedirs(upload_dir, exist_ok=True)
 
     filename = f"{prefix}_{request.student_id}_{uuid.uuid4().hex}.jpg"
-    file_path = os.path.join(upload_dir, filename)
-
-    file.save(file_path)
+    path = os.path.join(upload_dir, filename)
+    file.save(path)
 
     return f"/uploads/students/{subfolder}/{filename}"
+def update_student_document(column, file, folder, prefix):
+    conn = None
+    cur = None
+    try:
+        url = save_student_file(file, folder, prefix)
+        conn = get_mysql_connection()
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE students SET {column}=%s WHERE id=%s",
+            (url, request.student_id)
+        )
+        conn.commit()
+        return url
+    except:
+        if conn: conn.rollback()
+        raise
+    finally:
+        if cur: cur.close()
+        if conn: conn.close()
+
 @students_bp.route("/api/student/update-photo", methods=["POST"])
 @student_login_required
-def api_update_student_photo():
+def update_photo():
     if "photo" not in request.files:
-        return jsonify({"success": False, "message": "Photo required"}), 400
-
-    url = save_student_file(request.files["photo"], "photos", "photo")
-
-    conn = get_mysql_connection()
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE students SET photo_url = %s WHERE id = %s",
-        (url, request.student_id)
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
-
+        return jsonify({"success": False}), 400
+    url = update_student_document("photo_url", request.files["photo"], "photos", "photo")
     return jsonify({"success": True, "photo_url": url})
+
+
 @students_bp.route("/api/student/upload/marksheet_10", methods=["POST"])
 @student_login_required
-def api_upload_10th_marksheet():
-    url = save_student_file(request.files["file"], "marksheets", "marksheet")
-
-    conn = get_mysql_connection()
-    cur = conn.cursor()
-    cur.execute("UPDATE students SET marksheet_url = %s WHERE id = %s",
-                (url, request.student_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
+def upload_marksheet():
+    url = update_student_document("marksheet_url", request.files["file"], "marksheets", "marksheet")
     return jsonify({"success": True, "marksheet_url": url})
+
+
 @students_bp.route("/api/student/upload/aadhaar", methods=["POST"])
 @student_login_required
-def api_upload_aadhaar():
-    url = save_student_file(request.files["file"], "aadhaar", "aadhaar")
-
-    conn = get_mysql_connection()
-    cur = conn.cursor()
-    cur.execute("UPDATE students SET aadhaar_url = %s WHERE id = %s",
-                (url, request.student_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
+def upload_aadhaar():
+    url = update_student_document("aadhaar_url", request.files["file"], "aadhaar", "aadhaar")
     return jsonify({"success": True, "aadhaar_url": url})
+
+
 @students_bp.route("/api/student/upload/tc", methods=["POST"])
 @student_login_required
-def api_upload_tc():
-    url = save_student_file(request.files["file"], "tc", "tc")
-
-    conn = get_mysql_connection()
-    cur = conn.cursor()
-    cur.execute("UPDATE students SET tc_url = %s WHERE id = %s",
-                (url, request.student_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
+def upload_tc():
+    url = update_student_document("tc_url", request.files["file"], "tc", "tc")
     return jsonify({"success": True, "tc_url": url})
+
+
 @students_bp.route("/api/student/upload/migration", methods=["POST"])
 @student_login_required
-def api_upload_migration():
-    url = save_student_file(request.files["file"], "migration", "migration")
-
-    conn = get_mysql_connection()
-    cur = conn.cursor()
-    cur.execute("UPDATE students SET migration_url = %s WHERE id = %s",
-                (url, request.student_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
+def upload_migration():
+    url = update_student_document("migration_url", request.files["file"], "migration", "migration")
     return jsonify({"success": True, "migration_url": url})
