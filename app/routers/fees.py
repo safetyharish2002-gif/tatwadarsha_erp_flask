@@ -5,7 +5,7 @@ import json
 """
 - Works with main.py's blueprint registration
 """
-from flask import send_from_directory
+
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, session, current_app
 from app.routers.master import get_db
 import uuid
@@ -13,16 +13,6 @@ from datetime import datetime
 import os
 import json
 from werkzeug.utils import secure_filename
-from datetime import datetime
-from flask import request
-
-def get_mobile_student_id():
-    """
-    Mobile auth helper.
-    ApiService token middleware sets request.user_id
-    """
-    return getattr(request, "user_id", None)
-
 
 # Uploads folder - adjust if you want different path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))  # project root approx
@@ -58,9 +48,6 @@ def make_receipt_no(prefix="REC"):
     ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     suf = uuid.uuid4().hex[:4].upper()
     return f"{prefix}{ts[-10:]}{suf}"
-
-def get_mobile_student_id():
-    return getattr(request, "user_id", None)
 
 # -----------------------
 # Pages
@@ -1695,84 +1682,83 @@ def api_pm_add():
     db.close()
 
     return jsonify({"success": True, "id": pid})
-# Add this import at the top
+# =====================================================
+# MOBILE APIs (Student App)
+# =====================================================
 
-@fees_bp.route("/api/students/me", methods=["GET"])
-def api_student_me():
-    student_id = get_mobile_student_id()
-    if not student_id:
+def _mobile_student_id():
+    """
+    Mobile app uses logged-in session student
+    Adjust this ONLY if you later add JWT
+    """
+    return session.get("student_id")
+@fees_bp.route("/api/mobile/students/me", methods=["GET"])
+def mobile_student_summary():
+    if not _is_logged_in():
         return jsonify({"success": False, "message": "Unauthorized"}), 401
 
-    db = cur = None
+    student_id = _mobile_student_id()
+    if not student_id:
+        return jsonify({"success": False, "message": "Student not found"}), 400
+
+    db = None
+    cur = None
     try:
         db = get_db()
         cur = db.cursor()
 
-        # Student info
+        # totals
         cur.execute("""
-            SELECT id, name, roll_no, register_number, course, branch, department, batch
-            FROM students WHERE id=%s
-        """, (student_id,))
-        student = fetchone_dict(cur)
-        if not student:
-            return jsonify({"success": False, "message": "Student not found"}), 404
-
-        # Totals
-        cur.execute("""
-            SELECT 
-                COALESCE(SUM(af.amount),0) AS total_assigned,
-                COALESCE(SUM(fp.amount),0) AS total_paid
+            SELECT
+                COALESCE(SUM(af.amount),0) AS assigned,
+                COALESCE(SUM(fp.amount),0) AS paid
             FROM assigned_fees af
-            LEFT JOIN fee_payments fp ON af.id = fp.assigned_fee_id
+            LEFT JOIN fee_payments fp ON fp.assigned_fee_id = af.id
             WHERE af.student_id=%s
         """, (student_id,))
-        totals = fetchone_dict(cur) or {}
+        totals = fetchone_dict(cur)
 
-        # Payment history
+        # payment history
         cur.execute("""
-            SELECT 
+            SELECT
+                fp.id AS payment_id,
                 fp.amount,
                 fp.paid_on,
-                pm.name AS mode,
-                fh.name AS head_name,
-                fr.receipt_no,
-                fp.id AS payment_id
+                pm.name AS mode
             FROM fee_payments fp
             JOIN assigned_fees af ON fp.assigned_fee_id = af.id
-            LEFT JOIN fee_heads fh ON af.head_id = fh.id
             LEFT JOIN payment_modes pm ON fp.payment_mode_id = pm.id
-            LEFT JOIN fee_receipts fr ON fr.payment_id = fp.id
             WHERE af.student_id=%s
             ORDER BY fp.paid_on DESC
-            LIMIT 50
         """, (student_id,))
         payments = fetchall_dict(cur)
 
         for p in payments:
-            if isinstance(p.get("paid_on"), datetime):
-                p["paid_on"] = p["paid_on"].strftime("%d-%m-%Y %H:%M")
+            if isinstance(p["paid_on"], datetime):
+                p["paid_on"] = p["paid_on"].strftime("%d-%m-%Y %I:%M %p")
 
         return jsonify({
             "success": True,
-            "student": student,
-            "totals": {
-                "assigned": float(totals.get("total_assigned", 0)),
-                "paid": float(totals.get("total_paid", 0)),
-                "pending": float(totals.get("total_assigned", 0)) - float(totals.get("total_paid", 0))
-            },
+            "assigned": float(totals["assigned"]),
+            "paid": float(totals["paid"]),
+            "pending": float(totals["assigned"] - totals["paid"]),
             "payments": payments
         })
 
     finally:
         if cur: cur.close()
         if db: db.close()
-@fees_bp.route("/api/assigned/me", methods=["GET"])
-def api_assigned_me():
-    student_id = get_mobile_student_id()
-    if not student_id:
-        return jsonify({"success": False, "message": "Unauthorized"}), 401
+@fees_bp.route("/api/mobile/assigned/me", methods=["GET"])
+def mobile_assigned_fees():
+    if not _is_logged_in():
+        return jsonify({"success": False}), 401
 
-    db = cur = None
+    student_id = _mobile_student_id()
+    if not student_id:
+        return jsonify({"success": False}), 400
+
+    db = None
+    cur = None
     try:
         db = get_db()
         cur = db.cursor()
@@ -1780,10 +1766,9 @@ def api_assigned_me():
         cur.execute("""
             SELECT 
                 af.id AS assigned_id,
-                af.amount AS assigned_amount,
-                af.due_date,
-                af.status AS assigned_status,
                 fh.name AS head_name,
+                af.amount AS assigned_amount,
+                af.status,
                 s.department,
                 COALESCE((
                     SELECT SUM(fp.amount)
@@ -1791,145 +1776,94 @@ def api_assigned_me():
                     WHERE fp.assigned_fee_id = af.id
                 ),0) AS paid_amount
             FROM assigned_fees af
-            LEFT JOIN fee_heads fh ON af.head_id = fh.id
-            LEFT JOIN students s ON af.student_id = s.id
+            LEFT JOIN fee_heads fh ON fh.id = af.head_id
+            LEFT JOIN students s ON s.id = af.student_id
             WHERE af.student_id=%s
             ORDER BY s.department, fh.name
         """, (student_id,))
+
         rows = fetchall_dict(cur)
 
         groups = {}
         for r in rows:
-            dept = r.get("department") or "General"
-            assigned = float(r["assigned_amount"])
-            paid = float(r["paid_amount"])
-            r["balance"] = assigned - paid
+            dept = r["department"] or "General"
+            r["balance"] = float(r["assigned_amount"] - r["paid_amount"])
 
-            if isinstance(r.get("due_date"), datetime):
-                r["due_date"] = r["due_date"].strftime("%Y-%m-%d")
+            if dept not in groups:
+                groups[dept] = []
 
-            groups.setdefault(dept, []).append(r)
+            groups[dept].append(r)
 
         return jsonify({
             "success": True,
-            "student_id": student_id,
-            "groups": [{"department": d, "items": items} for d, items in groups.items()]
+            "groups": [
+                {"department": k, "items": v}
+                for k, v in groups.items()
+            ]
         })
 
     finally:
         if cur: cur.close()
         if db: db.close()
-@fees_bp.route("/api/payment_modes/active", methods=["GET"])
-def api_active_payment_modes():
-    db = cur = None
-    try:
-        db = get_db()
-        cur = db.cursor()
-        cur.execute("""
-            SELECT id, name 
-            FROM payment_modes 
-            WHERE active = true
-            ORDER BY name
-        """)
-        return jsonify({"success": True, "modes": fetchall_dict(cur)})
-    finally:
-        if cur: cur.close()
-        if db: db.close()
-@fees_bp.route("/collect/pay", methods=["POST"])
-def api_collect_pay():
-    student_id = get_mobile_student_id()
-    if not student_id:
-        return jsonify({"success": False, "message": "Unauthorized"}), 401
-
-    data = request.form.to_dict() if request.form else (request.get_json(silent=True) or {})
-    file = request.files.get("file")
-
-    assigned_id = data.get("assigned_fee_id")
-    amount = data.get("amount")
-    payment_mode_id = data.get("payment_mode_id")
-    account_id = data.get("account_id")
-    reference_no = data.get("reference_no", "")
-    remark = data.get("remark", "")
-    meta = data.get("meta") or {}
-
-    if not assigned_id or not amount or not payment_mode_id or not account_id:
-        return jsonify({"success": False, "message": "Missing fields"}), 400
-
-    db = cur = None
-    try:
-        db = get_db()
-        cur = db.cursor()
-
-        # Save attachment
-        file_path = None
-        if file:
-            ext = os.path.splitext(file.filename)[1].lower()
-            if ext not in {".jpg", ".jpeg", ".png", ".pdf"}:
-                return jsonify({"success": False, "message": "Invalid file"}), 400
-            fname = f"{uuid.uuid4().hex}{ext}"
-            save_path = os.path.join(UPLOAD_FOLDER, fname)
-            file.save(save_path)
-            file_path = f"uploads/payments/{fname}"
-
-        pay_id = gen_uuid()
-        paid_on = datetime.utcnow()
-
-        cur.execute("""
-            INSERT INTO fee_payments
-            (id, assigned_fee_id, student_id, amount, payment_mode_id,
-             reference_no, meta_json, file_path, paid_on, created_at)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        """, (
-            pay_id, assigned_id, student_id, float(amount),
-            payment_mode_id, reference_no,
-            json.dumps(meta), file_path, paid_on, paid_on
-        ))
-
-        receipt_id = gen_uuid()
-        receipt_no = make_receipt_no()
-        cur.execute("""
-            INSERT INTO fee_receipts (id, payment_id, receipt_no, created_at)
-            VALUES (%s,%s,%s,%s)
-        """, (receipt_id, pay_id, receipt_no, paid_on))
-
-        db.commit()
-
-        return jsonify({
-            "success": True,
-            "payment_id": pay_id,
-            "receipt_id": receipt_id,
-            "receipt_no": receipt_no,
-            "file_url": file_path
-        })
-
-    finally:
-        if cur: cur.close()
-        if db: db.close()
-@fees_bp.route("/api/payments/<payment_id>/file", methods=["GET"])
-def api_payment_file(payment_id):
-    student_id = get_mobile_student_id()
-    if not student_id:
+@fees_bp.route("/api/mobile/payment_modes/active", methods=["GET"])
+def mobile_payment_modes():
+    if not _is_logged_in():
         return jsonify({"success": False}), 401
 
-    db = cur = None
+    db = None
+    cur = None
     try:
         db = get_db()
         cur = db.cursor()
-        cur.execute("""
-            SELECT fp.file_path
-            FROM fee_payments fp
-            JOIN assigned_fees af ON fp.assigned_fee_id = af.id
-            WHERE fp.id=%s AND af.student_id=%s
-        """, (payment_id, student_id))
-        row = cur.fetchone()
-        if not row or not row[0]:
-            return jsonify({"success": False}), 404
 
-        return send_from_directory(
-            BASE_DIR,
-            row[0],
-            as_attachment=False
-        )
+        cur.execute("""
+            SELECT id, name
+            FROM payment_modes
+            ORDER BY name
+        """)
+        modes = fetchall_dict(cur)
+
+        return jsonify({
+            "success": True,
+            "modes": modes
+        })
+
     finally:
         if cur: cur.close()
         if db: db.close()
+from flask import send_from_directory
+
+@fees_bp.route("/api/mobile/payments/<payment_id>/file", methods=["GET"])
+def mobile_payment_file(payment_id):
+    if not _is_logged_in():
+        return jsonify({"success": False}), 401
+
+    db = None
+    cur = None
+    try:
+        db = get_db()
+        cur = db.cursor()
+
+        cur.execute("""
+            SELECT file_path
+            FROM fee_payments
+            WHERE id=%s
+        """, (payment_id,))
+        row = cur.fetchone()
+
+        if not row or not row[0]:
+            return jsonify({"success": False, "message": "File not found"}), 404
+
+        full_path = os.path.join(BASE_DIR, row[0])
+        directory = os.path.dirname(full_path)
+        filename = os.path.basename(full_path)
+
+        return send_from_directory(directory, filename, as_attachment=True)
+
+    finally:
+        if cur: cur.close()
+        if db: db.close()
+@fees_bp.route("/api/mobile/logout", methods=["POST"])
+def mobile_logout():
+    session.clear()
+    return jsonify({"success": True})
