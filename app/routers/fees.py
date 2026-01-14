@@ -5,7 +5,7 @@ import json
 """
 - Works with main.py's blueprint registration
 """
-
+from flask import send_from_directory
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, session, current_app
 from app.routers.master import get_db
 import uuid
@@ -58,6 +58,9 @@ def make_receipt_no(prefix="REC"):
     ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     suf = uuid.uuid4().hex[:4].upper()
     return f"{prefix}{ts[-10:]}{suf}"
+
+def get_mobile_student_id():
+    return getattr(request, "user_id", None)
 
 # -----------------------
 # Pages
@@ -1694,31 +1697,27 @@ def api_pm_add():
     return jsonify({"success": True, "id": pid})
 # Add this import at the top
 
-# -----------------------
-# Student-Specific APIs
-# -----------------------
-
 @fees_bp.route("/api/students/me", methods=["GET"])
 def api_student_me():
     student_id = get_mobile_student_id()
     if not student_id:
         return jsonify({"success": False, "message": "Unauthorized"}), 401
 
-    db = None
-    cur = None
+    db = cur = None
     try:
         db = get_db()
         cur = db.cursor()
 
+        # Student info
         cur.execute("""
             SELECT id, name, roll_no, register_number, course, branch, department, batch
             FROM students WHERE id=%s
         """, (student_id,))
         student = fetchone_dict(cur)
-
         if not student:
             return jsonify({"success": False, "message": "Student not found"}), 404
 
+        # Totals
         cur.execute("""
             SELECT 
                 COALESCE(SUM(af.amount),0) AS total_assigned,
@@ -1729,13 +1728,15 @@ def api_student_me():
         """, (student_id,))
         totals = fetchone_dict(cur) or {}
 
+        # Payment history
         cur.execute("""
             SELECT 
                 fp.amount,
                 fp.paid_on,
                 pm.name AS mode,
                 fh.name AS head_name,
-                fr.receipt_no
+                fr.receipt_no,
+                fp.id AS payment_id
             FROM fee_payments fp
             JOIN assigned_fees af ON fp.assigned_fee_id = af.id
             LEFT JOIN fee_heads fh ON af.head_id = fh.id
@@ -1757,27 +1758,21 @@ def api_student_me():
             "totals": {
                 "assigned": float(totals.get("total_assigned", 0)),
                 "paid": float(totals.get("total_paid", 0)),
-                "pending": float(totals.get("total_assigned", 0)) - float(totals.get("total_paid", 0)),
+                "pending": float(totals.get("total_assigned", 0)) - float(totals.get("total_paid", 0))
             },
             "payments": payments
         })
+
     finally:
         if cur: cur.close()
         if db: db.close()
-
 @fees_bp.route("/api/assigned/me", methods=["GET"])
 def api_assigned_me():
-    """
-    Returns assigned fees for logged-in student (mobile app)
-    Grouped by department
-    """
-
     student_id = get_mobile_student_id()
     if not student_id:
         return jsonify({"success": False, "message": "Unauthorized"}), 401
 
-    db = None
-    cur = None
+    db = cur = None
     try:
         db = get_db()
         cur = db.cursor()
@@ -1785,45 +1780,31 @@ def api_assigned_me():
         cur.execute("""
             SELECT 
                 af.id AS assigned_id,
-                af.student_id,
                 af.amount AS assigned_amount,
                 af.due_date,
                 af.status AS assigned_status,
-
                 fh.name AS head_name,
                 s.department,
-
                 COALESCE((
                     SELECT SUM(fp.amount)
                     FROM fee_payments fp
                     WHERE fp.assigned_fee_id = af.id
-                ), 0) AS paid_amount
-
+                ),0) AS paid_amount
             FROM assigned_fees af
-            LEFT JOIN fee_heads fh ON fh.id = af.head_id
-            LEFT JOIN students s ON s.id = af.student_id
-            WHERE af.student_id = %s
+            LEFT JOIN fee_heads fh ON af.head_id = fh.id
+            LEFT JOIN students s ON af.student_id = s.id
+            WHERE af.student_id=%s
             ORDER BY s.department, fh.name
         """, (student_id,))
-
         rows = fetchall_dict(cur)
 
-        # -------------------------
-        # Group by department
-        # -------------------------
         groups = {}
-
         for r in rows:
             dept = r.get("department") or "General"
-
-            assigned = float(r.get("assigned_amount") or 0)
-            paid = float(r.get("paid_amount") or 0)
-
-            r["assigned_amount"] = assigned
-            r["paid_amount"] = paid
+            assigned = float(r["assigned_amount"])
+            paid = float(r["paid_amount"])
             r["balance"] = assigned - paid
 
-            # Normalize date
             if isinstance(r.get("due_date"), datetime):
                 r["due_date"] = r["due_date"].strftime("%Y-%m-%d")
 
@@ -1832,36 +1813,123 @@ def api_assigned_me():
         return jsonify({
             "success": True,
             "student_id": student_id,
-            "groups": [
-                {
-                    "department": dept,
-                    "items": items
-                }
-                for dept, items in groups.items()
-            ]
+            "groups": [{"department": d, "items": items} for d, items in groups.items()]
         })
 
     finally:
-        if cur:
-            cur.close()
-        if db:
-            db.close()
-
-
+        if cur: cur.close()
+        if db: db.close()
 @fees_bp.route("/api/payment_modes/active", methods=["GET"])
 def api_active_payment_modes():
-    """Get active payment modes for dropdown"""
-    if not session.get("logged_in"):
-        return jsonify({"success": False}), 401
-    
-    db = None
-    cur = None
+    db = cur = None
     try:
         db = get_db()
         cur = db.cursor()
-        cur.execute("SELECT id, name FROM payment_modes WHERE active = true ORDER BY name")
-        modes = fetchall_dict(cur)
-        return jsonify({"success": True, "modes": modes})
+        cur.execute("""
+            SELECT id, name 
+            FROM payment_modes 
+            WHERE active = true
+            ORDER BY name
+        """)
+        return jsonify({"success": True, "modes": fetchall_dict(cur)})
+    finally:
+        if cur: cur.close()
+        if db: db.close()
+@fees_bp.route("/collect/pay", methods=["POST"])
+def api_collect_pay():
+    student_id = get_mobile_student_id()
+    if not student_id:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    data = request.form.to_dict() if request.form else (request.get_json(silent=True) or {})
+    file = request.files.get("file")
+
+    assigned_id = data.get("assigned_fee_id")
+    amount = data.get("amount")
+    payment_mode_id = data.get("payment_mode_id")
+    account_id = data.get("account_id")
+    reference_no = data.get("reference_no", "")
+    remark = data.get("remark", "")
+    meta = data.get("meta") or {}
+
+    if not assigned_id or not amount or not payment_mode_id or not account_id:
+        return jsonify({"success": False, "message": "Missing fields"}), 400
+
+    db = cur = None
+    try:
+        db = get_db()
+        cur = db.cursor()
+
+        # Save attachment
+        file_path = None
+        if file:
+            ext = os.path.splitext(file.filename)[1].lower()
+            if ext not in {".jpg", ".jpeg", ".png", ".pdf"}:
+                return jsonify({"success": False, "message": "Invalid file"}), 400
+            fname = f"{uuid.uuid4().hex}{ext}"
+            save_path = os.path.join(UPLOAD_FOLDER, fname)
+            file.save(save_path)
+            file_path = f"uploads/payments/{fname}"
+
+        pay_id = gen_uuid()
+        paid_on = datetime.utcnow()
+
+        cur.execute("""
+            INSERT INTO fee_payments
+            (id, assigned_fee_id, student_id, amount, payment_mode_id,
+             reference_no, meta_json, file_path, paid_on, created_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+            pay_id, assigned_id, student_id, float(amount),
+            payment_mode_id, reference_no,
+            json.dumps(meta), file_path, paid_on, paid_on
+        ))
+
+        receipt_id = gen_uuid()
+        receipt_no = make_receipt_no()
+        cur.execute("""
+            INSERT INTO fee_receipts (id, payment_id, receipt_no, created_at)
+            VALUES (%s,%s,%s,%s)
+        """, (receipt_id, pay_id, receipt_no, paid_on))
+
+        db.commit()
+
+        return jsonify({
+            "success": True,
+            "payment_id": pay_id,
+            "receipt_id": receipt_id,
+            "receipt_no": receipt_no,
+            "file_url": file_path
+        })
+
+    finally:
+        if cur: cur.close()
+        if db: db.close()
+@fees_bp.route("/api/payments/<payment_id>/file", methods=["GET"])
+def api_payment_file(payment_id):
+    student_id = get_mobile_student_id()
+    if not student_id:
+        return jsonify({"success": False}), 401
+
+    db = cur = None
+    try:
+        db = get_db()
+        cur = db.cursor()
+        cur.execute("""
+            SELECT fp.file_path
+            FROM fee_payments fp
+            JOIN assigned_fees af ON fp.assigned_fee_id = af.id
+            WHERE fp.id=%s AND af.student_id=%s
+        """, (payment_id, student_id))
+        row = cur.fetchone()
+        if not row or not row[0]:
+            return jsonify({"success": False}), 404
+
+        return send_from_directory(
+            BASE_DIR,
+            row[0],
+            as_attachment=False
+        )
     finally:
         if cur: cur.close()
         if db: db.close()
