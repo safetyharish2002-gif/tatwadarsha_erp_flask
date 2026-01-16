@@ -1212,7 +1212,6 @@ def session_wise_data():
         return jsonify([])
 
 # End of file
-
 @students_bp.route("/api/student/login", methods=["POST"])
 def api_student_login():
     conn = None
@@ -1239,6 +1238,15 @@ def api_student_login():
         if (student.get("phone") or "") != pwd:
             return jsonify({"success": False, "message": "Invalid credentials"}), 401
 
+        # =================================================
+        # 🔥 IMPORTANT: SESSION BRIDGE (DO NOT REMOVE)
+        # =================================================
+        session["logged_in"] = True
+        session["student_id"] = student["id"]
+
+        # =================================================
+        # 🔐 JWT TOKEN (UNCHANGED)
+        # =================================================
         token = jwt.encode(
             {
                 "student_id": student["id"],
@@ -1253,13 +1261,18 @@ def api_student_login():
 
     except Exception as e:
         print("LOGIN ERROR:", e)
-        return jsonify({"success": False}), 500
+        return jsonify({"success": False, "message": "Login failed"}), 500
 
     finally:
-        if cur: cur.close()
-        if conn: conn.close()
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
+# =====================================================
+# 🔐 JWT PROTECTOR (UNCHANGED)
+# =====================================================
 def student_login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -1281,6 +1294,10 @@ def student_login_required(f):
         return f(*args, **kwargs)
     return wrapper
 
+
+# =====================================================
+# 👤 STUDENT PROFILE API (UNCHANGED)
+# =====================================================
 @students_bp.route("/api/student/profile", methods=["GET"])
 @student_login_required
 def api_student_profile():
@@ -1305,8 +1322,15 @@ def api_student_profile():
         return jsonify({"success": False}), 500
 
     finally:
-        if cur: cur.close()
-        if conn: conn.close()
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
+# =====================================================
+# 📂 FILE HELPERS (UNCHANGED)
+# =====================================================
 def save_student_file(file, subfolder, prefix):
     BASE = os.path.abspath(os.path.dirname(__file__))
     upload_dir = os.path.join(BASE, "..", "uploads", "students", subfolder)
@@ -1317,6 +1341,8 @@ def save_student_file(file, subfolder, prefix):
     file.save(path)
 
     return f"/uploads/students/{subfolder}/{filename}"
+
+
 def update_student_document(column, file, folder, prefix):
     conn = None
     cur = None
@@ -1330,13 +1356,20 @@ def update_student_document(column, file, folder, prefix):
         )
         conn.commit()
         return url
-    except:
-        if conn: conn.rollback()
+    except Exception:
+        if conn:
+            conn.rollback()
         raise
     finally:
-        if cur: cur.close()
-        if conn: conn.close()
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
+
+# =====================================================
+# 📤 UPLOAD ROUTES (UNCHANGED)
+# =====================================================
 @students_bp.route("/api/student/update-photo", methods=["POST"])
 @student_login_required
 def update_photo():
